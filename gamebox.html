@@ -1,0 +1,464 @@
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameBox | Welcome!</title>
+    <!-- 改用在线favicon（避免本地路径错误） -->
+    <link rel="shortcut icon" href="https://img.icons8.com/fluency/48/000000/game-controller.png" type="image/x-icon">
+    <style>
+        /* 完全本地化样式，不依赖外部CDN */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: "Microsoft YaHei", Arial, sans-serif;
+        }
+        body {
+            background-color: #f9f9f9;
+            color: #333;
+            padding-top: 70px; /* 给固定导航栏留空间 */
+        }
+        /* 导航栏 */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            background-color: #6c5ce7; /* 主紫色 */
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            z-index: 100;
+        }
+        .navbar-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .navbar-brand {
+            font-size: 22px;
+            font-weight: bold;
+            text-decoration: none;
+            color: white;
+        }
+        .navbar-menu a {
+            color: white;
+            text-decoration: none;
+            margin-left: 25px;
+            font-size: 16px;
+        }
+        .navbar-menu a:hover {
+            text-decoration: underline;
+        }
+        /* 容器：居中内容 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        /* 欢迎区域 */
+        .welcome-section {
+            background: linear-gradient(135deg, #6c5ce7 0%, #a29bfe 100%);
+            color: white;
+            padding: 60px 0;
+            margin-bottom: 40px;
+            border-radius: 0 0 20px 20px;
+            text-align: center;
+        }
+        .welcome-section h1 {
+            font-size: 40px; /* 补全单位，避免解析错误 */
+            margin-bottom: 15px;
+        }
+        .welcome-section h3 {
+            font-size: 18px;
+            opacity: 0.9;
+        }
+        /* 通用标题 */
+        .section-title {
+            font-size: 22px;
+            color: #333;
+            margin: 30px 0 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        /* 用户卡片 */
+        .user-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .user-card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            flex: 1;
+            min-width: 250px;
+        }
+        .user-card h3 {
+            font-size: 18px;
+            margin-bottom: 10px;
+        }
+        .user-card a {
+            color: #6c5ce7;
+            text-decoration: none;
+            margin-bottom: 10px;
+            display: inline-block;
+        }
+        .badge {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            color: white;
+        }
+        .badge-admin {
+            background-color: blueviolet;
+        }
+        .badge-role {
+            background-color: rgb(43, 226, 171);
+        }
+        /* 游戏列表 */
+        .game-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        .game-card {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            flex: 1;
+            min-width: 200px;
+            text-align: center;
+            transition: transform 0.3s ease;
+        }
+        .game-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 15px rgba(0,0,0,0.1);
+        }
+        .game-card a {
+            font-size: 18px;
+            color: #333;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .game-card a:hover {
+            color: #6c5ce7;
+        }
+        /* 论坛区域 */
+        .forum-section {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            margin-bottom: 40px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .form-control {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        textarea.form-control {
+            min-height: 120px;
+            resize: vertical;
+        }
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .btn-primary {
+            background-color: #6c5ce7;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #5a4edb;
+        }
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid #6c5ce7;
+            color: #6c5ce7;
+        }
+        .btn-outline:hover {
+            background-color: #6c5ce7;
+            color: white;
+        }
+        /* 帖子列表 */
+        .post-list {
+            margin-top: 30px;
+        }
+        .post-card {
+            padding: 20px;
+            border-left: 4px solid #6c5ce7;
+            background-color: #f9f9f9;
+            border-radius: 0 6px 6px 0;
+            margin-bottom: 15px;
+        }
+        .post-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .post-title {
+            font-size: 18px;
+            font-weight: 500;
+        }
+        .post-time {
+            font-size: 14px;
+            color: #999;
+        }
+        .post-content {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #555;
+        }
+        .post-actions {
+            display: flex;
+            gap: 10px;
+        }
+        .empty-post {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 16px;
+        }
+        /* 底部 */
+        footer {
+            background-color: #333;
+            color: white;
+            text-align: center;
+            padding: 20px 0;
+            margin-top: 60px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 导航栏（固定顶部，无外部依赖） -->
+    <nav class="navbar">
+        <div class="navbar-container">
+            <a href="#" class="navbar-brand">
+                <!-- 用文字替代图标，避免加载问题 -->
+                🎮 GameBox
+            </a>
+            <div class="navbar-menu">
+                <a href="#">首页</a>
+                <a href="#games">游戏库</a>
+                <a href="#forum">论坛</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 欢迎区域 -->
+    <section class="welcome-section">
+        <div class="container">
+            <h1>Welcome to GameBox!</h1>
+            <h3>Huge amount of GAMES | Free and Perfect</h3>
+        </div>
+    </section>
+
+    <div class="container">
+        <!-- 用户展示区 -->
+        <section>
+            <h2 class="section-title">👥 Community Members</h2>
+            <div class="user-list">
+                <!-- 用户1 -->
+                <div class="user-card">
+                    <h3>Yaoyunxiang</h3>
+                    <a href="https://www.luogu.com.cn/user/1392084" target="_blank">查看个人主页</a>
+                    <span class="badge badge-admin">Admin</span>
+                </div>
+                <!-- 用户2 -->
+                <div class="user-card">
+                    <h3>cqbzgyr</h3>
+                    <a href="https://www.luogu.com.cn/user/775920" target="_blank">查看个人主页</a>
+                    <span class="badge badge-role">Rabbids</span>
+                </div>
+                <!-- 用户3 -->
+                <div class="user-card">
+                    <h3 style="color: #dc143c;">__GuanGuan__</h3>
+                    <a href="https://www.luogu.com.cn/user/1395911" target="_blank">查看个人主页</a>
+                    <span class="badge badge-role">Oba</span>
+                </div>
+                <!-- 用户4 -->
+                <div class="user-card">
+                    <h3 style="color: #dc143c;">admin</h3>
+                    <a href="initial/cqbzgyr.html" target="_blank">查看个人主页</a>
+                    <span class="badge badge-role">Oba</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 游戏列表区 -->
+        <section id="games">
+            <h2 class="section-title">🎮 My Games Collection</h2>
+            <div class="game-list">
+                <div class="game-card"><a href="Bus/version6.html" target="_blank">模拟公交</a></div>
+                <div class="game-card"><a href="Font/grid.html" target="_blank">塔防游戏</a></div>
+                <div class="game-card"><a href="IO-fight/note.html" target="_blank">OI-卡牌</a></div>
+                <div class="game-card"><a href="JumpJump/jump.html" target="_blank">Jump-a-Jump</a></div>
+                <div class="game-card"><a href="musicHit/core.html" target="_blank">音乐dash</a></div>
+                <div class="game-card"><a href="nailong-PC/py.html" target="_blank">合成大师</a></div>
+                <div class="game-card"><a href="Math vs Problems/racecar.htm" target="_blank">Math vs Problems</a></div>
+                <div class="game-card"><a href="LetHit/hit.html" target="_blank">节奏Hit</a></div>
+            </div>
+        </section>
+
+        <!-- 论坛功能区（简化JS，确保稳定） -->
+        <section id="forum" class="forum-section">
+            <h2 class="section-title">💬 Game Forum (File Share)</h2>
+            
+            <!-- 发布帖子 -->
+            <div>
+                <h3 style="font-size: 18px; margin-bottom: 20px;">发布新帖子</h3>
+                <form id="postForm">
+                    <div class="form-group">
+                        <label for="postTitle">帖子标题</label>
+                        <input type="text" id="postTitle" class="form-control" placeholder="输入标题（如：游戏攻略分享）" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="postContent">帖子内容</label>
+                        <textarea id="postContent" class="form-control" placeholder="描述你的内容..." required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="fileUpload">上传文件（支持zip/docx/pdf/txt）</label>
+                        <input type="file" id="fileUpload" class="form-control" accept=".zip,.docx,.pdf,.txt">
+                        <p id="fileName" style="margin-top: 8px; font-size: 14px; color: #666;"></p>
+                    </div>
+                    <button type="submit" class="btn btn-primary">发布帖子</button>
+                </form>
+            </div>
+
+            <!-- 帖子列表 -->
+            <div class="post-list">
+                <div id="emptyPost" class="empty-post">暂无帖子，快来发布第一个吧！</div>
+            </div>
+        </section>
+    </div>
+
+    <!-- 底部 -->
+    <footer>
+        <div class="container">
+            <p>© 2024 GameBox | All Games Free to Play</p>
+        </div>
+    </footer>
+
+    <script>
+        // 简化版JS：仅保留核心功能，避免复杂逻辑导致异常
+        const fileUpload = document.getElementById('fileUpload');
+        const fileName = document.getElementById('fileName');
+        const postForm = document.getElementById('postForm');
+        const postList = document.querySelector('.post-list');
+        const emptyPost = document.getElementById('emptyPost');
+        
+        // 1. 显示上传文件名
+        fileUpload.addEventListener('change', (e) => {
+            fileName.textContent = e.target.files.length ? `已选择：${e.target.files[0].name}` : '';
+        });
+
+        // 2. 本地存储帖子（简化逻辑）
+        let posts = JSON.parse(localStorage.getItem('gameForumPosts')) || [];
+
+        // 3. 渲染帖子
+        function renderPosts() {
+            // 清空列表
+            postList.innerHTML = '';
+            if (posts.length === 0) {
+                postList.appendChild(emptyPost.cloneNode(true));
+                return;
+            }
+
+            // 倒序显示（最新在前）
+            posts.reverse().forEach((post, index) => {
+                const postCard = document.createElement('div');
+                postCard.className = 'post-card';
+                postCard.innerHTML = `
+                    <div class="post-header">
+                        <div class="post-title">${post.title}</div>
+                        <div class="post-time">${post.time}</div>
+                    </div>
+                    <div class="post-content">${post.content}</div>
+                    ${post.fileName ? `<div style="margin-bottom: 15px; font-size: 14px;">
+                        📄 <a href="${post.fileUrl}" target="_blank" style="color: #6c5ce7;">${post.fileName}</a>
+                    </div>` : ''}
+                    <div class="post-actions">
+                        <button class="btn btn-outline" style="padding: 6px 12px; font-size: 14px;" onclick="copyLink(${index})">
+                            分享
+                        </button>
+                        <button class="btn btn-outline" style="padding: 6px 12px; font-size: 14px; border-color: #dc143c; color: #dc143c;" onclick="deletePost(${index})">
+                            删除
+                        </button>
+                    </div>
+                `;
+                postList.appendChild(postCard);
+            });
+            posts.reverse(); // 恢复原顺序
+        }
+
+        // 4. 复制分享链接
+        function copyLink(index) {
+            const shareUrl = `${window.location.origin}?postId=${index}`;
+            navigator.clipboard.writeText(shareUrl).then(() => {
+                alert('分享链接已复制到剪贴板！');
+            }).catch(() => {
+                alert('复制失败，请手动复制链接：' + shareUrl);
+            });
+        }
+
+        // 5. 删除帖子
+        function deletePost(index) {
+            if (confirm('确定要删除这篇帖子吗？')) {
+                posts.splice(index, 1);
+                localStorage.setItem('gameForumPosts', JSON.stringify(posts));
+                renderPosts();
+            }
+        }
+
+        // 6. 提交帖子
+        postForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const title = document.getElementById('postTitle').value;
+            const content = document.getElementById('postContent').value;
+            const file = fileUpload.files[0];
+
+            // 新增帖子
+            posts.push({
+                title: title,
+                content: content,
+                time: new Date().toLocaleString(),
+                fileName: file ? file.name : '',
+                fileUrl: file ? URL.createObjectURL(file) : ''
+            });
+
+            // 保存并刷新
+            localStorage.setItem('gameForumPosts', JSON.stringify(posts));
+            renderPosts();
+
+            // 重置表单
+            postForm.reset();
+            fileName.textContent = '';
+            alert('帖子发布成功！');
+        });
+
+        // 页面加载时渲染
+        window.onload = renderPosts;
+    </script>
+</body>
+</html>

@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>场景版跳一跳（含保存点）</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            touch-action: none;
+        }
+        
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        canvas {
+            display: block;
+        }
+        
+        .screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: rgba(255, 255, 255, 0.9);
+            z-index: 10;
+        }
+        
+        #game-over {
+            display: none;
+        }
+        
+        button {
+            padding: 12px 24px;
+            font-size: 18px;
+            background-color: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            margin: 8px;
+        }
+        
+        button:hover {
+            background-color: #2563eb;
+        }
+        
+        .score-display {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: Arial, sans-serif;
+            font-size: 24px;
+            font-weight: bold;
+            color: #1e40af;
+            z-index: 5;
+        }
+        
+        .power-bar {
+            position: absolute;
+            bottom: 50px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 200px;
+            height: 10px;
+            border: 2px solid #1e40af;
+            border-radius: 5px;
+            display: none;
+            z-index: 5;
+        }
+        
+        .power-fill {
+            height: 100%;
+            background-color: #f97216;
+            width: 0%;
+        }
+
+        .scene-indicator {
+            position: absolute;
+            top: 60px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-family: Arial, sans-serif;
+            font-size: 18px;
+            color: #475569;
+            z-index: 5;
+        }
+
+        .save_score{
+            padding: 12px 24px;
+            font-size: 18px;
+            background-color: #f6bb3b;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        /* 保存点提示样式 */
+        .checkpoint-toast {
+            position: absolute;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            background-color: rgba(22, 163, 74, 0.9);
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 16px;
+            border-radius: 4px;
+            z-index: 20;
+            display: none;
+            animation: fadeInOut 2s ease;
+        }
+
+        @keyframes fadeInOut {
+            0% { opacity: 0; }
+            20% { opacity: 1; }
+            80% { opacity: 1; }
+            100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <!-- 开始界面 -->
+        <div id="start-screen" class="screen">
+            <h1>跳一跳</h1>
+            <p>长按蓄力，松开跳跃</p>
+            <p>分数达标将切换场景哦！</p>
+            <button id="start-btn">从头开始</button>
+            <button id="checkpoint-btn" style="display: none; background-color: #10b981;">从保存点继续</button>
+        </div>
+        
+        <!-- 游戏结束界面 -->
+        <div id="game-over" class="screen">
+            <h2>游戏结束</h2>
+            <p>得分: <span id="final-score">0</span></p>
+            <p>历史最高：<span id="history-score">0</span></p>
+            <button id="restart-btn">再来一次</button>
+            <button id="restart-from-checkpoint" style="display: none; background-color: #10b981;">从保存点继续</button>
+        </div>
+        
+        <!-- 分数与场景显示 -->
+        <div class="score-display">
+            分数: <span id="score">0</span>
+        </div>
+        <div class="scene-indicator" id="scene-info">
+            当前场景: 初始
+        </div>
+        
+        <!-- 力量条 -->
+        <div class="power-bar">
+            <div class="power-fill"></div>
+        </div>
+
+        <!-- 保存点提示 -->
+        <div class="checkpoint-toast" id="checkpoint-toast">已创建保存点！</div>
+        
+        <!-- 游戏画布 -->
+        <canvas id="gameCanvas"></canvas>
+    </div>
+
+    <script>
+        // 获取元素
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('start-screen');
+        const gameOverScreen = document.getElementById('game-over');
+        const startBtn = document.getElementById('start-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const checkpointBtn = document.getElementById('checkpoint-btn');
+        const restartFromCheckpointBtn = document.getElementById('restart-from-checkpoint');
+        const scoreElement = document.getElementById('score');
+        const finalScoreElement = document.getElementById('final-score');
+        const historyScoreElement = document.getElementById('history-score');
+        const powerBar = document.querySelector('.power-bar');
+        const powerFill = document.querySelector('.power-fill');
+        const sceneInfo = document.getElementById('scene-info');
+        const checkpointToast = document.getElementById('checkpoint-toast');
+        
+        // 设置画布尺寸
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // 场景配置：新增雪山场景
+        const scenes = {
+            initial: {
+                name: '初始',
+                bgColor: '#7bc6ce',
+                groundColor: '#94a3b8',
+                platformType: 'basic'
+            },
+            forest: {
+                name: '森林',
+                bgColor: '#a7f3d0',
+                groundColor: '#65a30d',
+                platformType: 'tree'
+            },
+            sea: {
+                name: '海洋',
+                bgColor: '#bfdbfe',
+                groundColor: '#1e40af',
+                platformType: 'boat'
+            },
+            city: {
+                name: '城市',
+                bgColor: '#e2e8f0',
+                groundColor: '#475569',
+                platformType: 'car'
+            },
+            snow: {  // 新增雪山场景
+                name: '雪山',
+                bgColor: '#e0f2fe',
+                groundColor: '#f0fdfa',
+                platformType: 'ice'
+            }
+        };
+        
+        // 游戏状态
+        let game = {
+            isPlaying: false,
+            score: 0,
+            lastscore: 0,
+            jumping: false,
+            jumpPower: 0,
+            maxPower: 100,
+            cameraX: 0,
+            currentScene: 'initial',
+            sceneScores: {  // 调整分数阈值，新增雪山场景
+                forest: 2000,
+                sea: 4000,
+                city: 6000,
+                snow: 8000  // 雪山场景阈值
+            },
+            cover: 0,
+            hasCheckpoint: false  // 标记是否存在有效保存点
+        };
+        
+        // 角色属性
+        let character = {
+            x: 50,
+            y: 0,
+            size: 20,
+            velocityX: 0,
+            velocityY: 0,
+            onGround: true,
+            lastPlatformIndex: 0  // 记录上次停留的平台索引，用于加分判断
+        };
+        
+        // 平台属性
+        const platformConfig = {
+            minGap: 150,
+            maxGap: 400,
+            baseY: 0.7,
+            yRange: 40
+        };
+        
+        let platforms = [];
+
+        // -------------------------- 保存点核心功能 --------------------------
+        // 1. 保存当前游戏状态到本地存储
+        function saveCheckpoint() {
+            // 构建保存点数据（包含恢复游戏所需的所有关键状态）
+            const checkpointData = {
+                gameState: {
+                    score: game.score,
+                    currentScene: game.currentScene,
+                    cameraX: game.cameraX,
+                    cover: game.cover
+                },
+                characterState: {
+                    x: character.x,
+                    y: character.y,
+                    size: character.size,
+                    velocityX: character.velocityX,
+                    velocityY: character.velocityY,
+                    onGround: character.onGround,
+                    lastPlatformIndex: character.lastPlatformIndex
+                },
+                platforms: JSON.parse(JSON.stringify(platforms)), // 深拷贝平台数组
+                savedAt: new Date().toLocaleString() // 保存时间（可选）
+            };
+
+            // 存储到localStorage
+            localStorage.setItem('jumpGameCheckpoint', JSON.stringify(checkpointData));
+            game.hasCheckpoint = true;
+            
+            // 显示保存点提示
+            showCheckpointToast();
+            
+            // 更新UI按钮显示
+            updateCheckpointButtons();
+        }
+
+        // 2. 从本地存储读取保存点数据
+        function loadCheckpoint() {
+            const savedData = localStorage.getItem('jumpGameCheckpoint');
+            if (!savedData) return null;
+            
+            try {
+                return JSON.parse(savedData);
+            } catch (e) {
+                // 数据格式错误，清除无效保存点
+                localStorage.removeItem('jumpGameCheckpoint');
+                game.hasCheckpoint = false;
+                updateCheckpointButtons();
+                return null;
+            }
+        }
+
+        // 3. 从保存点恢复游戏
+        function restoreFromCheckpoint() {
+            const checkpoint = loadCheckpoint();
+            if (!checkpoint) return false;
+
+            // 恢复游戏状态
+            game.score = checkpoint.gameState.score;
+            game.currentScene = checkpoint.gameState.currentScene;
+            game.cameraX = checkpoint.gameState.cameraX;
+            game.cover = checkpoint.gameState.cover;
+            scoreElement.textContent = game.score;
+            sceneInfo.textContent = `当前场景: ${scenes[game.currentScene].name}`;
+
+            // 恢复角色状态
+            character = checkpoint.characterState;
+            character.velocityX = 0;
+            character.velocityY = 0;
+
+            // 恢复平台数据
+            platforms = checkpoint.platforms;
+
+            // 隐藏界面并开始游戏
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            game.isPlaying = true;
+            update();
+            return true;
+        }
+
+        // 4. 显示保存点提示
+        function showCheckpointToast() {
+            checkpointToast.style.display = 'block';
+            setTimeout(() => {
+                checkpointToast.style.display = 'none';
+            }, 2000);
+        }
+
+        // 5. 更新保存点按钮显示状态
+        function updateCheckpointButtons() {
+            const hasCheckpoint = !!loadCheckpoint();
+            checkpointBtn.style.display = hasCheckpoint ? 'block' : 'none';
+            restartFromCheckpointBtn.style.display = hasCheckpoint ? 'block' : 'none';
+        }
+        // -------------------------------------------------------------------
+        
+        // 检查场景切换（新增：场景切换时自动创建保存点）
+        function checkSceneSwitch() {
+            const current = game.currentScene;
+            const score = game.score;
+            let newScene = current;
+
+            // 按分数顺序切换场景（初始→森林→海洋→城市→雪山→循环）
+            if (score >= game.sceneScores.snow && current !== 'snow') {
+                newScene = 'snow';
+            } else if (score >= game.sceneScores.city && current !== 'city' && current !== 'snow') {
+                newScene = 'city';
+            } else if (score >= game.sceneScores.sea && current !== 'sea' && current !== 'city' && current !== 'snow') {
+                newScene = 'sea';
+            } else if (score >= game.sceneScores.forest && current !== 'forest' && current !== 'sea' && current !== 'city' && current !== 'snow') {
+                newScene = 'forest';
+            }
+
+            // 场景切换时自动创建保存点
+            if (newScene !== current) {
+                game.currentScene = newScene;
+                saveCheckpoint(); // 切换场景时触发保存
+            }
+
+            // 更新场景显示
+            sceneInfo.textContent = `当前场景: ${scenes[game.currentScene].name}`;
+        }
+        
+        // 创建初始平台
+        function createPlatforms() {
+            platforms = [];
+            // 第一个平台（固定位置）
+            platforms.push({
+                x: 0,
+                y: canvas.height * platformConfig.baseY,
+                width: 150,
+                height: 20,
+                type: scenes[game.currentScene].platformType,
+                scored: false  // 新增：标记是否已加分
+            });
+            
+            // 添加初始2个平台
+            for (let i = 0; i < 2; i++) {
+                addPlatform();
+            }
+        }
+        
+        // 添加新平台
+        function addPlatform() {
+            const last = platforms[platforms.length - 1];
+            const gap = platformConfig.minGap + Math.random() * (platformConfig.maxGap - platformConfig.minGap);
+            // 不同场景平台宽度差异
+            let width;
+            switch (game.currentScene) {
+                case 'forest': // 树平台稍窄
+                    width = 100 + Math.random() * 40;
+                    break;
+                case 'sea': // 船平台中等
+                    width = 100 + Math.random() * 50;
+                    break;
+                case 'city': // 车平台较宽
+                    width = 120 + Math.random() * 60;
+                    break;
+                case 'snow': // 冰面平台
+                    width = 90 + Math.random() * 50;
+                    break;
+                default: // 初始平台
+                    width = 150 + Math.random() * 60;
+            }
+            
+            platforms.push({
+                x: last.x + last.width + gap,
+                y: canvas.height * (
+                    game.currentScene === 'forest' ? platformConfig.baseY - 0.05 : 
+                    game.currentScene === 'sea' ? platformConfig.baseY + 0.03 :
+                    game.currentScene === 'snow' ? platformConfig.baseY - 0.02 :
+                    platformConfig.baseY
+                ) ,
+                width: width,
+                height: 20,
+                type: scenes[game.currentScene].platformType,
+                scored: false  // 新增：标记是否已加分
+            });
+        }
+        
+        // 绘制角色
+        function drawCharacter() {
+            if(game.cover === 0)ctx.fillStyle = '#3b82f6';
+            else if(game.cover === 2)ctx.fillStyle = '#3bf632';
+            else ctx.fillStyle = '#9f9f9f';
+            ctx.beginPath();
+            ctx.arc(
+                character.x - game.cameraX, 
+                character.y, 
+                character.size, 
+                0, Math.PI * 2
+            );
+            ctx.fill();
+        }
+        
+        // 绘制平台
+        function drawPlatforms() {
+            platforms.forEach(platform => {
+                const drawX = platform.x - game.cameraX;
+                const drawY = platform.y;
+                
+                switch (platform.type) {
+                    case 'tree': // 树平台优化：增加树干纹理和树叶细节
+                        // 树干（棕色）
+                        ctx.fillStyle = '#8b4513';
+                        ctx.fillRect(drawX + platform.width/2 - 10, drawY + 10, 20, 120);
+                        // 树干纹理
+                        ctx.fillStyle = '#6d380c';
+                        for (let i = 0; i < 4; i++) {
+                            ctx.fillRect(drawX + platform.width/2 - 12, drawY + 20 + i*25, 4, 15);
+                            ctx.fillRect(drawX + platform.width/2 + 8, drawY + 30 + i*25, 4, 15);
+                        }
+                        // 树冠（绿色）
+                        ctx.fillStyle = '#22c55e';
+                        ctx.beginPath();
+                        ctx.arc(drawX + platform.width / 2, drawY - 20, platform.width / 2, 0, Math.PI * 2);
+                        ctx.fill();
+                        // 碰撞区域
+                        ctx.fillStyle = '#8b4513';
+                        ctx.fillRect(drawX, drawY, platform.width, platform.height);
+                        break;
+                        
+                    case 'boat': // 船平台
+                        // 船身（棕色）
+                        ctx.fillStyle = '#92400e';
+                        ctx.fillRect(drawX, drawY, platform.width, 15);
+                        // 船底（棕色）
+                        ctx.fillStyle = '#78350f';
+                        ctx.beginPath();
+                        ctx.moveTo(drawX, drawY + 15);
+                        ctx.lineTo(drawX + platform.width/2, drawY + 25);
+                        ctx.lineTo(drawX + platform.width, drawY + 15);
+                        ctx.closePath();
+                        ctx.fill();
+                        // 帆（白色）
+                        if (platform.width > 100) {
+                            ctx.fillStyle = 'white';
+                            ctx.fillRect(drawX + platform.width/2 - 5, drawY - 40, 10, 40);
+                            ctx.fillStyle = '#ef4444';
+                            ctx.beginPath();
+                            ctx.moveTo(drawX + platform.width/2, drawY - 40);
+                            ctx.lineTo(drawX + platform.width/2 + 30, drawY - 25);
+                            ctx.lineTo(drawX + platform.width/2, drawY - 10);
+                            ctx.closePath();
+                            ctx.fill();
+                        }
+                        break;
+                        
+                    case 'car': // 城市车辆平台优化：增加更多细节
+                        // 车身（灰色）
+                        ctx.fillStyle = '#64748b';
+                        ctx.fillRect(drawX, drawY - 10, platform.width, 20);
+                        // 车顶（深色）
+                        ctx.fillStyle = '#334155';
+                        ctx.fillRect(drawX + 20, drawY - 20, platform.width - 40, 10);
+                        // 车窗
+                        ctx.fillStyle = '#38bdf8';
+                        ctx.fillRect(drawX + 30, drawY - 18, (platform.width - 60)/2, 8);
+                        ctx.fillRect(drawX + 30 + (platform.width - 60)/2, drawY - 18, (platform.width - 60)/2, 8);
+                        // 车轮（黑色）
+                        ctx.fillStyle = '#0f172a';
+                        [drawX + 30, drawX + platform.width - 30].forEach(wheelX => {
+                            ctx.beginPath();
+                            ctx.arc(wheelX, drawY + 10, 8, 0, Math.PI * 2);
+                            ctx.fill();
+                            // 轮毂
+                            ctx.fillStyle = '#94a3b8';
+                            ctx.beginPath();
+                            ctx.arc(wheelX, drawY + 10, 3, 0, Math.PI * 2);
+                            ctx.fill();
+                        });
+                        // 车灯
+                        ctx.fillStyle = '#fde68a';
+                        ctx.fillRect(drawX + platform.width - 10, drawY - 5, 5, 5);
+                        break;
+                        
+                    case 'ice': // 雪山冰面平台
+                        ctx.fillStyle = '#bae6fd';
+                        ctx.fillRect(drawX, drawY, platform.width, platform.height);
+                        // 冰面反光
+                        ctx.fillStyle = '#e0f2fe';
+                        ctx.fillRect(drawX + 5, drawY + 5, platform.width - 10, 2);
+                        // 冰块边缘
+                        ctx.strokeStyle = '#7dd3fc';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(drawX, drawY, platform.width, platform.height);
+                        break;
+                    default: // 初始平台
+                        ctx.fillStyle = '#9a9a9a';
+                        ctx.fillRect(drawX, drawY, platform.width, platform.height);
+                        // 平台边缘
+                        ctx.fillStyle = '#64748b';
+                        ctx.fillRect(drawX, drawY, platform.width, 3);
+                }
+            });
+        }
+        
+        // 绘制背景（优化森林和城市背景）
+        function drawBackground() {
+            const scene = scenes[game.currentScene];
+            // 天空/基础背景
+            ctx.fillStyle = scene.bgColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 远景装饰
+            switch (game.currentScene) {
+                case 'forest': // 森林背景优化：增加更多树木和细节
+                    // 远山
+                    ctx.fillStyle = '#4d7c0f';
+                    ctx.beginPath();
+                    ctx.moveTo(0, canvas.height*0.6);
+                    ctx.bezierCurveTo(
+                        canvas.width*0.3, canvas.height*0.5,
+                        canvas.width*0.6, canvas.height*0.55,
+                        canvas.width, canvas.height*0.58
+                    );
+                    ctx.lineTo(canvas.width, canvas.height);
+                    ctx.lineTo(0, canvas.height);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // 近山
+                    ctx.fillStyle = '#65a30d';
+                    ctx.beginPath();
+                    ctx.moveTo(0, canvas.height*0.65);
+                    ctx.bezierCurveTo(
+                        canvas.width*0.2, canvas.height*0.62,
+                        canvas.width*0.7, canvas.height*0.63,
+                        canvas.width, canvas.height*0.6
+                    );
+                    ctx.lineTo(canvas.width, canvas.height);
+                    ctx.lineTo(0, canvas.height);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // 树木群
+                    const treePositions = [
+                        {x: 100 - game.cameraX*0.1, height: 120},
+                        {x: 300 - game.cameraX*0.1, height: 90},
+                        {x: 500 - game.cameraX*0.1, height: 150},
+                        {x: 700 - game.cameraX*0.1, height: 100},
+                        {x: 900 - game.cameraX*0.1, height: 130},
+                        {x: 1100 - game.cameraX*0.1, height: 80}
+                    ];
+                    treePositions.forEach(tree => {
+                        // 树干
+                        ctx.fillStyle = '#8b4513';
+                        ctx.fillRect(tree.x, canvas.height*0.75 - tree.height, 10, tree.height);
+                        // 树冠
+                        ctx.fillStyle = '#22c55e';
+                        ctx.beginPath();
+                        ctx.arc(tree.x + 5, canvas.height*0.75 - tree.height, tree.height*0.4, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+                    
+                    // 云朵
+                    ctx.fillStyle = 'white';
+                    [
+                        {x: 100 - game.cameraX*0.2, y: 80, r: 20},
+                        {x: 300 - game.cameraX*0.2, y: 120, r: 15},
+                        {x: 500 - game.cameraX*0.2, y: 60, r: 25}
+                    ].forEach(cloud => {
+                        ctx.beginPath();
+                        ctx.arc(cloud.x, cloud.y, cloud.r, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + cloud.r*0.8, cloud.y - cloud.r*0.3, cloud.r*0.7, 0, Math.PI * 2);
+                        ctx.arc(cloud.x + cloud.r*0.8, cloud.y + cloud.r*0.3, cloud.r*0.7, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+                    break;
+                    
+                case 'sea': // 海洋背景
+                    // 海面（深色）
+                    ctx.fillStyle = scene.groundColor;
+                    ctx.fillRect(0, canvas.height*0.75, canvas.width, canvas.height*0.25);
+                    // 波浪
+                    ctx.fillStyle = '#3b82f6';
+                    ctx.beginPath();
+                    for (let x = 0; x < canvas.width; x++) {
+                        const y = canvas.height*0.75 + Math.sin((x + game.cameraX*0.1)/50) * 10;
+                        if (x === 0) ctx.moveTo(x, y);
+                        else ctx.lineTo(x, y);
+                    }
+                    ctx.lineTo(canvas.width, canvas.height);
+                    ctx.lineTo(0, canvas.height);
+                    ctx.closePath();
+                    ctx.fill();
+                    // 太阳
+                    ctx.fillStyle = '#fbbf24';
+                    ctx.beginPath();
+                    ctx.arc(canvas.width - 100, 100, 40, 0, Math.PI * 2);
+                    ctx.fill();
+                    break;
+                    
+                case 'city': // 城市背景优化：增加更多建筑和细节
+                    // 远景建筑（深灰色）
+                    ctx.fillStyle = '#334155';
+                    [
+                        {x: 300 - game.cameraX*0.1, y: canvas.height*0.5, w: 100, h: 800},
+                        {x: 600 - game.cameraX*0.1, y: canvas.height*0.4, w: 150, h: 1000},
+                        {x: 1000 - game.cameraX*0.1, y: canvas.height*0.45, w: 120, h: 900}
+                    ].forEach(building => {
+                        ctx.fillRect(building.x, building.y, building.w, building.h);
+                        // 窗户
+                        ctx.fillStyle = '#fbbf24';
+                        for (let i = 0; i < 10; i++) {
+                            for (let j = 0; j < 3; j++) {
+                                ctx.fillRect(
+                                    building.x + 10 + j*30, 
+                                    building.y + 10 + i*40, 
+                                    15, 20
+                                );
+                            }
+                        }
+                    });
+                    
+                    // 中景建筑（灰色）
+                    ctx.fillStyle = '#64748b';
+                    [
+                        {x: 1500 - game.cameraX*0.2, y: canvas.height*0.3, w: 200, h: 1200},
+                        {x: 2000 - game.cameraX*0.2, y: canvas.height*0.35, w: 180, h: 1100},
+                        {x: 2500 - game.cameraX*0.2, y: canvas.height*0.25, w: 250, h: 1400}
+                    ].forEach(building => {
+                        ctx.fillRect(building.x, building.y, building.w, building.h);
+                        // 广告牌
+                        if (building.w > 180) {
+                            ctx.fillStyle = '#ef4444';
+                            ctx.fillRect(building.x + 20, building.y + 50, building.w - 40, 100);
+                            ctx.fillStyle = 'white';
+                            ctx.font = '20px Arial';
+                            ctx.fillText('Hello,WHball', building.x + 90, building.y + 200);
+                        }
+                    });
+                    
+                    // 近景路灯
+                    const lampXPositions = [
+                        200 - game.cameraX*0.5, 
+                        500 - game.cameraX*0.5, 
+                        800 - game.cameraX*0.5
+                    ];
+                    lampXPositions.forEach(x => {
+                        // 灯杆
+                        ctx.fillStyle = '#64748b';
+                        ctx.fillRect(x, canvas.height*0.75, 5, 100);
+                        // 灯罩
+                        ctx.fillStyle = '#fde68a';
+                        ctx.beginPath();
+                        ctx.arc(x + 2.5, canvas.height*0.75 - 20, 15, 0, Math.PI * 2);
+                        ctx.fill();
+                    });
+                    break;
+                    
+                case 'snow': // 雪山场景背景
+                    // 雪山
+                    ctx.fillStyle = '#f0fdfa';
+                    ctx.beginPath();
+                    ctx.moveTo(0, canvas.height*0.6);
+                    ctx.bezierCurveTo(
+                        canvas.width*0.2, canvas.height*0.4,
+                        canvas.width*0.5, canvas.height*0.5,
+                        canvas.width, canvas.height*0.45
+                    );
+                    ctx.lineTo(canvas.width, canvas.height);
+                    ctx.lineTo(0, canvas.height);
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // 山顶积雪
+                    ctx.fillStyle = '#ffffff';
+                    ctx.beginPath();
+                    ctx.moveTo(0, canvas.height*0.55);
+                    ctx.bezierCurveTo(
+                        canvas.width*0.2, canvas.height*0.35,
+                        canvas.width*0.5, canvas.height*0.45,
+                        canvas.width, canvas.height*0.4
+                    );
+                    ctx.lineTo(canvas.width, canvas.height*0.5);
+                    ctx.bezierCurveTo(
+                        canvas.width*0.5, canvas.height*0.55,
+                        canvas.width*0.2, canvas.height*0.45,
+                        0, canvas.height*0.6
+                    );
+                    ctx.closePath();
+                    ctx.fill();
+                    
+                    // 雪花
+                    ctx.fillStyle = 'white';
+                    for (let i = 0; i < 50; i++) {
+                        const x = (Math.random() * canvas.width) - game.cameraX*0.1;
+                        const y = Math.random() * canvas.height*0.7;
+                        const size = Math.random() * 2 + 1;
+                        ctx.beginPath();
+                        ctx.arc(x, y, size, 0, Math.PI * 2);
+                        ctx.fill();
+                    }
+                    
+                    // 远处的松树
+                    const pinePositions = [
+                        {x: 150 - game.cameraX*0.1, height: 60},
+                        {x: 400 - game.cameraX*0.1, height: 80},
+                        {x: 700 - game.cameraX*0.1, height: 50}
+                    ];
+                    pinePositions.forEach(pine => {
+                        ctx.fillStyle = '#166534';
+                        // 三角形树冠
+                        ctx.beginPath();
+                        ctx.moveTo(pine.x, canvas.height*0.75);
+                        ctx.lineTo(pine.x + 15, canvas.height*0.75 - pine.height);
+                        ctx.lineTo(pine.x - 15, canvas.height*0.75 - pine.height);
+                        ctx.closePath();
+                        ctx.fill();
+                        // 树干
+                        ctx.fillStyle = '#8b4513';
+                        ctx.fillRect(pine.x - 3, canvas.height*0.75 - 20, 6, 20);
+                    });
+                    break;
+                    
+                default: // 初始背景
+                    ctx.fillStyle = scene.groundColor;
+                    ctx.fillRect(0, canvas.height*0.75, canvas.width, canvas.height*0.25);
+            }
+        }
+        
+        // 开始蓄力
+        function startJump() {
+            if (!game.isPlaying || !character.onGround || game.jumping) return;
+            
+            game.jumping = true;
+            game.jumpPower = 0;
+            powerBar.style.display = 'block';
+            
+            // 蓄力动画
+            const charge = setInterval(() => {
+                if (!game.jumping) {
+                    clearInterval(charge);
+                    return;
+                }
+                
+                game.jumpPower += 2;
+                if (game.jumpPower > game.maxPower) game.jumpPower = game.maxPower;
+                powerFill.style.width = game.jumpPower + '%';
+            }, 20);
+        }
+        
+        // 执行跳跃
+        function performJump() {
+            if (!game.jumping || !character.onGround) return;
+            
+            game.jumping = false;
+            powerBar.style.display = 'none';
+            
+            // 设置跳跃速度（不同场景微调）
+            const speedMultiplier = game.currentScene === 'forest' ? 1.1 : 
+                                   game.currentScene === 'city' ? 0.9 :
+                                   game.currentScene === 'snow' ? 1.2 : 1;  // 冰面更滑
+            character.velocityX = (game.jumpPower / game.maxPower) * 12 * speedMultiplier;
+            character.velocityY = -((game.jumpPower / game.maxPower) * 18 + 3) * speedMultiplier;
+            character.onGround = false;
+        }
+        
+        // 检查碰撞（修复加分判断）
+        function checkCollision() {
+            let onGround = false;
+            let currentPlatformIndex = -1;
+            
+            // 检查平台碰撞
+            platforms.forEach((platform, index) => {
+                if (character.x + character.size > platform.x &&
+                    character.x - character.size < platform.x + platform.width &&
+                    character.y + character.size > platform.y &&
+                    character.y + character.size < platform.y + platform.height + 5 &&
+                    character.velocityY > 0) {
+                    
+                    character.y = platform.y - character.size;
+                    character.velocityY = 0;
+                    onGround = true;
+                    currentPlatformIndex = index;
+                }
+            });
+            
+            // 检查是否掉出屏幕
+            if (character.y - character.size > canvas.height) {
+                gameOver();
+                return;
+            }
+            
+            character.onGround = onGround;
+            
+            // 修复加分判断：仅当跳到新平台且未加分时才加分
+            if (onGround && currentPlatformIndex !== -1) {
+                const currentPlatform = platforms[currentPlatformIndex];
+                // 确保每个平台只加一次分
+                if (!currentPlatform.scored) {
+                    // 不同场景加分差异
+                    let addScore = 300;
+                    if (game.currentScene === 'forest') addScore = 350;
+                    else if (game.currentScene === 'city') addScore = 400;
+                    else if (game.currentScene === 'snow') addScore = 450;  // 雪山加分更高
+
+                    game.cover = 0;
+                    if (game.currentScene === 'forest') game.cover = 2;
+                    else if (game.currentScene === 'city') game.cover = 1;
+                    else if (game.currentScene === 'snow') game.cover = 0;
+                    
+                    game.score += addScore;
+                    scoreElement.textContent = game.score;
+                    currentPlatform.scored = true;  // 标记为已加分
+                    character.lastPlatformIndex = currentPlatformIndex;  // 更新上次平台索引
+                    
+                    // 检查场景切换
+                    checkSceneSwitch();
+                }
+            }
+        }
+        
+        // 更新游戏状态
+        function update() {
+            if (!game.isPlaying) return;
+            
+            // 应用重力（不同场景微调）
+            const gravity = game.currentScene === 'sea' ? 0.4 : 
+                          game.currentScene === 'city' ? 0.6 :
+                          game.currentScene === 'snow' ? 0.45 : 0.5;  // 雪山重力稍小
+            character.velocityY += gravity;
+            character.y += character.velocityY;
+            character.x += character.velocityX;
+            
+            // 逐渐减速（冰面减速更慢）
+            const friction = game.currentScene === 'snow' ? 0.99 : 0.98;
+            character.velocityX *= friction;
+            
+            // 移动相机
+            const targetX = character.x - canvas.width / 3;
+            game.cameraX += (targetX - game.cameraX) * 0.1;
+            
+            // 移除超出视野的平台并添加新平台
+            if (platforms.length > 0 && platforms[0].x + platforms[0].width < game.cameraX - 100) {
+                platforms.shift();
+                addPlatform();
+            }
+            
+            // 碰撞检测
+            checkCollision();
+            
+            // 绘制
+            drawBackground();
+            drawPlatforms();
+            drawCharacter();
+            
+            // 循环
+            requestAnimationFrame(update);
+        }
+        
+        // 游戏结束
+        function gameOver() {
+            game.isPlaying = false;
+            finalScoreElement.textContent = game.score;
+            historyScoreElement.textContent = (game.score > game.lastscore ? game.score : game.lastscore);
+            if(game.score > game.lastscore){
+                game.lastscore = game.score;
+            }
+            gameOverScreen.style.display = 'flex';
+            // 更新保存点按钮显示
+            updateCheckpointButtons();
+        }
+        
+        // 重置游戏
+        function resetGame() {
+            game.score = 0;
+            game.cameraX = 0;
+            game.currentScene = 'initial';
+            scoreElement.textContent = '0';
+            sceneInfo.textContent = `当前场景: ${scenes[game.currentScene].name}`;
+            
+            // 重置角色位置
+            character = {
+                x: 50,
+                y: canvas.height * platformConfig.baseY - 20,
+                size: 20,
+                velocityX: 0,
+                velocityY: 0,
+                onGround: true,
+                lastPlatformIndex: 0  // 重置上次平台索引
+            };
+            
+            // 重新创建平台
+            createPlatforms();
+            
+            // 隐藏游戏结束界面
+            gameOverScreen.style.display = 'none';
+        }
+        
+        // 开始游戏（从头开始）
+        function startGame() {
+            resetGame();
+            startScreen.style.display = 'none';
+            game.isPlaying = true;
+            update();
+        }
+
+        // 页面加载时检查保存点，更新按钮显示
+        window.addEventListener('load', () => {
+            updateCheckpointButtons();
+            // 初始化平台
+            createPlatforms();
+        });
+        
+        // 事件监听
+        startBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        checkpointBtn.addEventListener('click', restoreFromCheckpoint);
+        restartFromCheckpointBtn.addEventListener('click', restoreFromCheckpoint);
+        
+        // 鼠标控制
+        canvas.addEventListener('mousedown', startJump);
+        canvas.addEventListener('mouseup', performJump);
+
+        // 监听键盘按下事件（空格键）
+        canvas.addEventListener('keydown', (e) => {
+            if (e.key === ' ' || e.keyCode === 32) { // 空格键的 key 是 ' '，keyCode 是 32
+                e.preventDefault(); // 阻止空格键默认行为（如页面滚动）
+                startJump(); // 开始跳跃的逻辑
+            }
+        });
+
+        // 监听键盘松开事件（空格键）
+        canvas.addEventListener('keyup', (e) => {
+            if (e.key === ' ' || e.keyCode === 32) {
+                e.preventDefault();
+                performJump(); // 执行跳跃的逻辑
+            }
+        });
+        
+        // 触摸控制
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            startJump();
+        });
+        
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            performJump();
+        });
+    </script>
+</body>
+</html>

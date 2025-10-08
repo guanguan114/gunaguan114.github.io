@@ -1,0 +1,1392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OI卡牌对战 - 修复版</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+  
+  <!-- 配置Tailwind自定义颜色和字体 -->
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: '#6366f1', // 主色调：靛蓝色
+            secondary: '#10b981', // 辅助色：绿色
+            accent: '#f59e0b', // 强调色：琥珀色
+            dark: '#1e293b', // 深色背景
+            light: '#f8fafc', // 浅色文本
+			normal: '#dddddd', //稀有度-白色
+            rare: '#5affbe', // 稀有度-绿色
+            epic: '#7ac9ff', // 稀有度-蓝色
+            legend: '#7c3aed', // 稀有度-紫色
+          },
+          fontFamily: {
+            code: ['Consolas', 'Monaco', 'monospace'],
+          },
+        },
+      }
+    }
+  </script>
+  
+  <style type="text/tailwindcss">
+    @layer utilities {
+      .content-auto {
+        content-visibility: auto;
+      }
+      .card-hover {
+        @apply transition-all duration-300 hover:scale-105 hover:shadow-lg;
+      }
+      .glow {
+        @apply ring-2 ring-primary/50 ring-offset-2 ring-offset-dark;
+      }
+      .text-gradient {
+        @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-secondary;
+      }
+      .star {
+        @apply text-accent inline-block;
+      }
+      .animate-shake {
+        animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+      }
+      .animate-attack {
+        animation: attack 0.6s ease-in-out;
+      }
+      .animate-damage {
+        animation: damage 0.8s ease-out forwards;
+      }
+      .animate-levelup {
+        animation: levelup 1s ease-out;
+      }
+      .animate-summon {
+        animation: summon 0.5s ease-out;
+      }
+      .card {
+        @apply bg-gray-900 rounded-lg p-2 border transition-all duration-300;
+      }
+    }
+    
+    @keyframes shake {
+      10%, 90% { transform: translateX(-1px); }
+      20%, 80% { transform: translateX(2px); }
+      30%, 50%, 70% { transform: translateX(-3px); }
+      40%, 60% { transform: translateX(3px); }
+    }
+    
+    @keyframes attack {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1) translateX(10px); }
+      100% { transform: scale(1); }
+    }
+    
+    @keyframes damage {
+      0% { opacity: 1; transform: translateY(0); }
+      70% { opacity: 1; }
+      100% { opacity: 0; transform: translateY(-20px); }
+    }
+    
+    @keyframes levelup {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.2); box-shadow: 0 0 15px rgba(245, 158, 11, 0.6); }
+    }
+    
+    @keyframes summon {
+      0% { opacity: 0; transform: scale(0.5); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-dark to-gray-900 text-light min-h-screen font-code overflow-x-hidden">
+  <!-- 顶部导航 -->
+  <header class="sticky top-0 z-50 bg-dark/80 backdrop-blur-md border-b border-gray-700">
+    <div class="container mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center gap-2">
+        <i class="fa fa-code-fork text-primary text-2xl"></i>
+        <h1 class="text-xl md:text-2xl font-bold text-gradient">OI卡牌对战</h1>
+      </div>
+      
+      <div class="flex items-center gap-4">
+        <button id="sound-toggle" class="p-2 rounded-full hover:bg-gray-800 transition-colors">
+          <i class="fa fa-volume-up text-gray-300"></i>
+        </button>
+        <button id="help-btn" class="p-2 rounded-full hover:bg-gray-800 transition-colors">
+          <i class="fa fa-question text-gray-300"></i>
+        </button>
+        <div class="hidden md:flex items-center gap-2 bg-gray-800 rounded-full px-3 py-1">
+          <i class="fa fa-user-circle text-primary"></i>
+          <span>玩家12345</span>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <main class="container mx-auto px-4 py-6">
+    <!-- 游戏状态区域 -->
+    <div class="flex flex-col md:flex-row justify-between mb-6 gap-4">
+      <div class="bg-gray-800/50 rounded-xl p-4 flex-1 border border-gray-700">
+        <div class="flex justify-between items-center mb-2">
+          <h2 class="font-bold text-lg">对战状态</h2>
+          <span id="round-indicator" class="bg-primary/20 text-primary px-2 py-1 rounded-full text-sm">第1回合</span>
+        </div>
+        <div class="flex flex-wrap justify-between gap-2 text-sm">
+          <div>
+            <p><i class="fa fa-clock-o text-gray-400"></i> 剩余时间: <span id="timer">30s</span></p>
+          </div>
+          <div>
+            <p><i class="fa fa-coins text-accent"></i> 金币: <span id="gold">10</span></p>
+          </div>
+          <div>
+            <p><i class="fa fa-shield text-secondary"></i> 生命值: <span id="health">100</span></p>
+          </div>
+          <div>
+            <p><i class="fa fa-star text-accent"></i> 升级点数: <span id="upgrade-points">0</span></p>
+          </div>
+        </div>
+      </div>
+      
+      <div class="bg-gray-800/50 rounded-xl p-4 w-full md:w-64 border border-gray-700">
+        <h2 class="font-bold text-lg mb-2">对手信息</h2>
+        <div class="flex items-center gap-2 mb-2">
+          <div class="w-8 h-8 bg-gray-700 rounded-full flex items-center justify-center">
+            <i class="fa fa-robot text-gray-400"></i>
+          </div>
+          <span>算法大师 Lv.5</span>
+        </div>
+        <div class="w-full bg-gray-700 rounded-full h-2 mb-1">
+          <div id="enemy-health-bar" class="bg-red-500 h-2 rounded-full" style="width: 80%"></div>
+        </div>
+        <div class="text-xs text-right text-gray-400">生命值: <span id="enemy-health">80</span>/100</div>
+      </div>
+    </div>
+    
+    <!-- 主要游戏区域 -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <!-- 左侧：手牌和角色升级区域 -->
+      <div class="lg:col-span-1 flex flex-col gap-4">
+        <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+          <h2 class="font-bold text-lg mb-4">你的手牌</h2>
+          <div id="hand-cards" class="grid grid-cols-2 gap-3">
+            <!-- 手牌会通过JS动态生成 -->
+          </div>
+          
+          <div class="mt-4 flex justify-center">
+            <button id="draw-card-btn" class="bg-gray-700 hover:bg-gray-600 text-light px-4 py-2 rounded-lg transition-colors flex items-center gap-2">
+              <i class="fa fa-plus-circle"></i>
+              <span>抽牌 (2)</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+          <h2 class="font-bold text-lg mb-3">角色升级</h2>
+          <p class="text-xs text-gray-400 mb-3">选择你的角色进行升星，提升属性和能力</p>
+          
+          <div id="upgrade-panel" class="space-y-3 max-h-[200px] overflow-y-auto pr-1">
+            <!-- 升级面板会通过JS动态生成 -->
+          </div>
+        </div>
+      </div>
+      
+      <!-- 中间：战场和商店区域 -->
+      <div class="lg:col-span-2 flex flex-col gap-4">
+        <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+          <h2 class="font-bold text-lg mb-4">敌方战场</h2>
+          <div id="enemy-field" class="grid grid-cols-5 gap-3 min-h-[140px]">
+            <!-- 敌方单位会通过JS动态生成 -->
+          </div>
+        </div>
+        
+        <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+          <h2 class="font-bold text-lg mb-4">你的战场</h2>
+          <div id="player-field" class="grid grid-cols-5 gap-3 min-h-[140px]">
+            <!-- 我方单位会通过JS动态生成 -->
+          </div>
+        </div>
+        
+        <!-- 角色商店 -->
+        <div class="bg-gray-800/50 rounded-xl p-4 border border-gray-700">
+          <div class="flex justify-between items-center mb-3">
+            <h2 class="font-bold text-lg">角色商店</h2>
+            <button id="refresh-shop-btn" class="bg-gray-700 hover:bg-gray-600 text-light px-3 py-1 rounded-lg transition-colors text-sm flex items-center gap-1">
+              <i class="fa fa-refresh"></i>
+              <span>刷新 (2金币)</span>
+            </button>
+          </div>
+          <p class="text-xs text-gray-400 mb-3">购买角色加入你的战场，每回合自动刷新（有概率出现稀有角色）</p>
+          
+          <div id="shop-characters" class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <!-- 商店角色会通过JS动态生成 -->
+          </div>
+          
+          <div class="mt-4 flex justify-end">
+            <button id="end-turn-btn" class="bg-accent hover:bg-amber-500 text-light px-6 py-2 rounded-lg transition-colors text-sm font-bold">
+              结束回合
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+  
+  <!-- 游戏帮助模态框 -->
+  <div id="help-modal" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-gray-900 rounded-xl max-w-md w-full max-h-[80vh] overflow-y-auto">
+      <div class="p-4 border-b border-gray-700 flex justify-between items-center">
+        <h2 class="text-xl font-bold text-gradient">游戏规则</h2>
+        <button id="close-help" class="text-gray-400 hover:text-light">
+          <i class="fa fa-times"></i>
+        </button>
+      </div>
+      <div class="p-4">
+        <div class="mb-4">
+          <h3 class="font-bold text-primary mb-2">基本玩法</h3>
+          <p class="text-sm text-gray-300 mb-2">OI卡牌对战是一款回合制策略游戏，你需要收集和升级编程相关角色，击败对手。</p>
+          <p class="text-sm text-gray-300">每回合开始时你会获得金币，可以用来购买新角色或使用卡牌，角色会自动攻击敌人。</p>
+        </div>
+        
+        <div class="mb-4">
+          <h3 class="font-bold text-primary mb-2">升星系统</h3>
+          <p class="text-sm text-gray-300 mb-2">角色可以通过升星提升属性，3星角色会解锁特殊技能。每回合结束会获得升级点数。</p>
+          <div class="flex gap-1 text-sm mt-1">
+            <span class="star"><i class="fa fa-star"></i></span>
+            <span class="star"><i class="fa fa-star"></i></span>
+            <span class="star"><i class="fa fa-star"></i></span>
+            <span class="text-gray-400">= 解锁技能</span>
+          </div>
+        </div>
+        
+        <div class="mb-4">
+          <h3 class="font-bold text-primary mb-2">商店系统</h3>
+          <p class="text-sm text-gray-300">商店每回合自动刷新，也可以花费金币手动刷新。有概率出现稀有度更高的强力角色：</p>
+          <div class="flex flex-wrap gap-3 mt-2">
+            <span class="text-xs bg-gray-700 px-2 py-1 rounded flex items-center gap-1">
+              <i class="fa fa-circle text-gray-400 text-[8px]"></i> 普通
+            </span>
+            <span class="text-xs bg-rare/20 text-rare px-2 py-1 rounded flex items-center gap-1">
+              <i class="fa fa-circle text-rare text-[8px]"></i> 稀有
+            </span>
+            <span class="text-xs bg-epic/20 text-epic px-2 py-1 rounded flex items-center gap-1">
+              <i class="fa fa-circle text-epic text-[8px]"></i> 史诗
+            </span>
+            <span class="text-xs bg-legend/20 text-legend px-2 py-1 rounded flex items-center gap-1">
+              <i class="fa fa-circle text-legend text-[8px]"></i> 传说
+            </span>
+          </div>
+        </div>
+        
+        <div>
+          <h3 class="font-bold text-primary mb-2">胜利条件</h3>
+          <p class="text-sm text-gray-300">将对手的生命值降至0，同时保护自己的生命值不为0。每回合双方角色会自动攻击。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- 游戏结束模态框 -->
+  <div id="game-over-modal" class="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-gray-900 rounded-xl max-w-md w-full p-6 text-center">
+      <div id="game-over-icon" class="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-4">
+        <i class="fa fa-trophy text-2xl text-primary"></i>
+      </div>
+      <h2 id="game-over-title" class="text-2xl font-bold mb-2">战斗胜利!</h2>
+      <p id="game-over-message" class="text-gray-400 mb-6">你成功击败了算法大师</p>
+      <div class="flex flex-col gap-3">
+        <button id="new-game-btn" class="bg-primary hover:bg-primary/90 text-light px-6 py-3 rounded-lg transition-colors font-bold">
+          新游戏
+        </button>
+        <button id="close-game-over" class="bg-gray-700 hover:bg-gray-600 text-light px-6 py-3 rounded-lg transition-colors">
+          返回主页
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <footer class="mt-10 bg-gray-900/50 border-t border-gray-800 py-6">
+    <div class="container mx-auto px-4 text-center text-gray-500 text-sm">
+      <p>© 2025 OI卡牌对战 - 信息学奥林匹克策略游戏</p>
+      <p class="mt-1">升星系统 | 自动攻击 | 回合制战斗</p>
+    </div>
+  </footer>
+
+  <script>
+    // 游戏数据和配置
+    const gameConfig = {
+      // 角色库 - 包含不同稀有度的角色
+      characterPool: {
+        normal: [
+          { id: 'prefix', name: '前缀和', attack: 5, health: 15, cost: 2, icon: 'fa-code', color: 'normal' },
+          { id: 'bruce-force', name: '超级暴力', attack: 4, health: 12, cost: 2, icon: 'fa-magic', color: 'normal' },
+          { id: 'dfs', name: '剪枝DFS', attack: 6, health: 18, cost: 3, icon: 'fa-shield', color: 'normal' },
+          { id: 'excel', name: '打表', attack: 3, health: 10, cost: 1, icon: 'fa-html5', color: 'normal' }
+        ],
+        rare: [
+          { id: 'greedy', name: '贪心', attack: 8, health: 20, cost: 4, icon: 'fa-sitemap', color: 'rare' },
+          { id: 'dp', name: '暴力DP', attack: 6, health: 25, cost: 4, icon: 'fa-database', color: 'rare' }
+        ],
+        epic: [
+          { id: 'doub', name: '倍增', attack: 12, health: 30, cost: 6, icon: 'fa-brain', color: 'epic' },
+          { id: 'func', name: '封装函数', attack: 10, health: 35, cost: 6, icon: 'fa-server', color: 'epic' }
+        ],
+        legend: [
+          { id: 'segtree', name: '线段树', attack: 18, health: 50, cost: 10, icon: 'fa-lightbulb-o', color: 'legend' },
+          { id: 'mo-algo', name: '莫队', attack: 15, health: 45, cost: 9, icon: 'fa-linux', color: 'legend' }
+        ]
+      },
+      
+      // 卡牌库
+      cardPool: [
+        { type: '猛冲', color: 'primary', icon: 'fa-sort', name: '死磕一题', cost: 3, desc: '对敌方1个单位造成18点伤害' },
+        { type: '保分', color: 'secondary', icon: 'fa-list', name: '先打暴力', cost: 2, desc: '为1个友方单位+10HP' },
+        { type: '调试', color: 'purple-500', icon: 'fa-code-fork', name: '对拍', cost: 4, desc: '复制1个友方单位' },
+        { type: '保分', color: 'blue-500', icon: 'fa-server', name: '弃小保大', cost: 2, desc: '获得5枚金币' },
+        { type: '调试', color: 'yellow-500', icon: 'fa-bug', name: '断点调试', cost: 3, desc: '使1个敌方单位本回合无法行动' },
+        { type: '保分', color: 'green-500', icon: 'fa-lock', name: '测大样例', cost: 4, desc: '所有友方单位获得5点护盾' }
+      ],
+      
+      // 商店刷新概率
+      shopProbabilities: {
+        normal: 0.6,    // 60%概率出现普通角色
+        rare: 0.25,     // 25%概率出现稀有角色
+        epic: 0.1,      // 10%概率出现史诗角色
+        legend: 0.05    // 5%概率出现传说角色
+      }
+    };
+    
+    // 游戏状态管理
+    const gameState = {
+      round: 1,
+      gold: 10,
+      health: 100,
+      enemyHealth: 80,
+      drawCount: 2,
+      upgradePoints: 0,
+      timer: 30,
+      playerCharacters: [],  // 存储玩家角色数据
+      enemyCharacters: [],   // 存储敌方角色数据
+      shopCharacters: []     // 存储商店角色数据
+    };
+    
+    // DOM元素
+    const roundIndicator = document.getElementById('round-indicator');
+    const goldElement = document.getElementById('gold');
+    const healthElement = document.getElementById('health');
+    const enemyHealthElement = document.getElementById('enemy-health');
+    const enemyHealthBar = document.getElementById('enemy-health-bar');
+    const timerElement = document.getElementById('timer');
+    const upgradePointsElement = document.getElementById('upgrade-points');
+    const drawCardBtn = document.getElementById('draw-card-btn');
+    const refreshShopBtn = document.getElementById('refresh-shop-btn');
+    const endTurnBtn = document.getElementById('end-turn-btn');
+    const helpBtn = document.getElementById('help-btn');
+    const helpModal = document.getElementById('help-modal');
+    const closeHelp = document.getElementById('close-help');
+    const gameOverModal = document.getElementById('game-over-modal');
+    const gameOverTitle = document.getElementById('game-over-title');
+    const gameOverMessage = document.getElementById('game-over-message');
+    const gameOverIcon = document.getElementById('game-over-icon');
+    const newGameBtn = document.getElementById('new-game-btn');
+    const closeGameOver = document.getElementById('close-game-over');
+    
+    // 更新游戏状态显示
+    function updateGameState() {
+      roundIndicator.textContent = `第${gameState.round}回合`;
+      goldElement.textContent = gameState.gold;
+      healthElement.textContent = gameState.health;
+      enemyHealthElement.textContent = gameState.enemyHealth;
+      enemyHealthBar.style.width = `${gameState.enemyHealth}%`;
+      timerElement.textContent = `${gameState.timer}s`;
+      upgradePointsElement.textContent = gameState.upgradePoints;
+      drawCardBtn.querySelector('span').textContent = `抽牌 (${gameState.drawCount})`;
+      
+      // 禁用/启用按钮基于当前金币
+      if (gameState.gold < 2) {
+        refreshShopBtn.disabled = true;
+        refreshShopBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        refreshShopBtn.disabled = false;
+        refreshShopBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+      
+      if (gameState.drawCount <= 0) {
+        drawCardBtn.disabled = true;
+        drawCardBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      } else {
+        drawCardBtn.disabled = false;
+        drawCardBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      }
+      
+      // 更新战场显示
+      renderPlayerField();
+      renderEnemyField();
+      renderUpgradePanel();
+    }
+    
+    // 渲染玩家战场
+    function renderPlayerField() {
+      const playerField = document.getElementById('player-field');
+      playerField.innerHTML = '';
+      
+      gameState.playerCharacters.forEach((char, index) => {
+        const charElement = document.createElement('div');
+        charElement.className = `card-hover bg-gray-900 rounded-lg p-2 border border-${char.color}/30 flex flex-col items-center relative`;
+        charElement.dataset.index = index;
+        
+        // 添加召唤动画（仅首次渲染）
+        if (!char.rendered) {
+          charElement.classList.add('animate-summon');
+          char.rendered = true;
+        }
+        
+        // 星级显示
+        let starsHtml = '';
+        for (let i = 0; i < char.stars; i++) {
+          starsHtml += `<i class="fa fa-star text-accent text-[8px]"></i>`;
+        }
+        
+        // 技能标记（3星解锁）
+        const skillBadge = char.stars >= 3 ? 
+          `<div class="absolute -top-1 -left-1 bg-epic/80 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
+            <i class="fa fa-fire"></i>
+          </div>` : '';
+          
+        // 护盾显示
+        const shieldHtml = char.shield > 0 ? 
+          `<div class="absolute -top-1 -right-1 bg-blue-500/80 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
+            ${char.shield}
+          </div>` : '';
+        
+        charElement.innerHTML = `
+          ${skillBadge}
+          ${shieldHtml}
+          <div class="w-12 h-12 bg-${char.color}/10 rounded-full flex items-center justify-center mb-1">
+            <i class="fa ${char.icon} text-${char.color} text-xl"></i>
+          </div>
+          <h3 class="font-bold text-xs mb-1">${char.name}</h3>
+          <div class="flex gap-1 mb-1">${starsHtml}</div>
+          <div class="text-[10px] text-gray-400 mb-1">
+            <i class="fa fa-crosshairs text-red-400"></i> ${char.attack}
+            <i class="fa fa-heart text-red-500 ml-1"></i> ${char.currentHealth}/${char.health}
+          </div>
+          <div class="w-full bg-gray-700 rounded-full h-1.5">
+            <div class="bg-${char.color} h-1.5 rounded-full" style="width: ${(char.currentHealth / char.health) * 100}%"></div>
+          </div>
+        `;
+        
+        playerField.appendChild(charElement);
+      });
+    }
+    
+    // 渲染敌方战场
+    function renderEnemyField() {
+      const enemyField = document.getElementById('enemy-field');
+      enemyField.innerHTML = '';
+      
+      gameState.enemyCharacters.forEach((char, index) => {
+        const charElement = document.createElement('div');
+        charElement.className = `card-hover bg-gray-900 rounded-lg p-2 border border-red-500/30 flex flex-col items-center`;
+        charElement.dataset.index = index;
+        
+        // 添加召唤动画（仅首次渲染）
+        if (!char.rendered) {
+          charElement.classList.add('animate-summon');
+          char.rendered = true;
+        }
+        
+        // 护盾显示
+        const shieldHtml = char.shield > 0 ? 
+          `<div class="absolute -top-1 -right-1 bg-blue-500/80 text-white text-[8px] rounded-full w-4 h-4 flex items-center justify-center">
+            ${char.shield}
+          </div>` : '';
+        
+        charElement.innerHTML = `
+          ${shieldHtml}
+          <div class="w-12 h-12 bg-red-500/10 rounded-full flex items-center justify-center mb-1">
+            <i class="fa ${char.icon} text-red-400 text-xl"></i>
+          </div>
+          <h3 class="font-bold text-xs mb-1">${char.name}</h3>
+          <div class="text-[10px] text-gray-400 mb-1">
+            <i class="fa fa-crosshairs text-red-400"></i> ${char.attack}
+            <i class="fa fa-heart text-red-500 ml-1"></i> ${char.currentHealth}/${char.health}
+          </div>
+          <div class="w-full bg-gray-700 rounded-full h-1.5">
+            <div class="bg-red-500 h-1.5 rounded-full" style="width: ${(char.currentHealth / char.health) * 100}%"></div>
+          </div>
+        `;
+        
+        enemyField.appendChild(charElement);
+      });
+    }
+    
+    // 渲染升级面板
+    function renderUpgradePanel() {
+      const upgradePanel = document.getElementById('upgrade-panel');
+      upgradePanel.innerHTML = '';
+      
+      if (gameState.playerCharacters.length === 0) {
+        upgradePanel.innerHTML = '<p class="text-xs text-gray-500 text-center py-3">没有可升级的角色</p>';
+        return;
+      }
+      
+      gameState.playerCharacters.forEach((char, index) => {
+        if (char.stars >= 5) return; // 最高5星
+        
+        const upgradeCost = char.stars + 1; // 升星成本 = 当前星级 + 1
+        const isDisabled = gameState.upgradePoints < upgradeCost;
+        
+        const upgradeElement = document.createElement('div');
+        upgradeElement.className = `bg-gray-900 rounded-lg p-2 border border-gray-700 flex items-center justify-between ${isDisabled ? 'opacity-70' : ''}`;
+        
+        upgradeElement.innerHTML = `
+          <div class="flex items-center gap-2">
+            <div class="w-8 h-8 bg-${char.color}/10 rounded-full flex items-center justify-center">
+              <i class="fa ${char.icon} text-${char.color}"></i>
+            </div>
+            <div>
+              <h4 class="text-xs font-bold">${char.name}</h4>
+              <div class="flex gap-0.5">
+                ${Array.from({ length: char.stars }).map(() => '<i class="fa fa-star text-accent text-[8px]"></i>').join('')}
+                ${Array.from({ length: 5 - char.stars }).map(() => '<i class="fa fa-star-o text-gray-600 text-[8px]"></i>').join('')}
+              </div>
+            </div>
+          </div>
+          <button class="upgrade-btn text-xs bg-accent/20 hover:bg-accent/30 text-accent px-2 py-1 rounded transition-colors ${isDisabled ? 'cursor-not-allowed bg-gray-700 text-gray-500' : ''}" 
+                  data-index="${index}" 
+                  ${isDisabled ? 'disabled' : ''}>
+            <i class="fa fa-star"></i> 升星 (${upgradeCost})
+          </button>
+        `;
+        
+        upgradePanel.appendChild(upgradeElement);
+      });
+      
+      // 添加升星按钮事件监听
+      document.querySelectorAll('.upgrade-btn:not([disabled])').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const index = parseInt(this.dataset.index);
+          upgradeCharacter(index);
+        });
+      });
+    }
+    
+    // 升星角色
+    function upgradeCharacter(index) {
+      const char = gameState.playerCharacters[index];
+      const upgradeCost = char.stars + 1;
+      
+      if (gameState.upgradePoints < upgradeCost) return;
+      
+      // 扣除升级点数
+      gameState.upgradePoints -= upgradeCost;
+      
+      // 提升星级
+      char.stars += 1;
+      
+      // 提升属性 (10%/星)
+      const boostFactor = 1.1;
+      char.attack = Math.floor(char.attack * boostFactor);
+      char.health = Math.floor(char.health * boostFactor);
+      char.currentHealth = Math.min(Math.floor(char.currentHealth * boostFactor), char.health);
+      
+      // 3星解锁技能
+      if (char.stars === 3) {
+        char.skill = true;
+      }
+      
+      // 升星动画
+      const playerField = document.getElementById('player-field');
+      const charElement = playerField.children[index];
+      if (charElement) {
+        // 确保动画只触发一次
+        charElement.classList.remove('animate-levelup');
+        void charElement.offsetWidth; // 触发重绘
+        charElement.classList.add('animate-levelup');
+        setTimeout(() => charElement.classList.remove('animate-levelup'), 1000);
+      }
+      
+      updateGameState();
+    }
+    
+    // 倒计时计时器
+    let timerInterval;
+    function startTimer() {
+      clearInterval(timerInterval);
+      gameState.timer = 30;
+      updateGameState();
+      
+      timerInterval = setInterval(() => {
+        gameState.timer--;
+        updateGameState();
+        
+        if (gameState.timer <= 0) {
+          clearInterval(timerInterval);
+          endTurn();
+        }
+      }, 1000);
+    }
+    
+    // 抽牌功能
+    function drawCard() {
+      if (gameState.drawCount <= 0) return;
+      
+      gameState.drawCount--;
+      
+      // 随机生成一张新卡牌
+      const randomCard = gameConfig.cardPool[Math.floor(Math.random() * gameConfig.cardPool.length)];
+      const handCards = document.getElementById('hand-cards');
+      
+      // 创建新卡牌元素
+      const cardElement = document.createElement('div');
+      cardElement.className = `card card-hover border-${randomCard.color}/30`;
+      cardElement.dataset.cardId = 'card_' + Date.now(); // 添加唯一ID
+      
+      cardElement.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+          <span class="text-xs bg-${randomCard.color}/20 text-${randomCard.color} px-1 rounded">${randomCard.type}</span>
+          <span class="text-xs text-accent"><i class="fa fa-coins"></i> ${randomCard.cost}</span>
+        </div>
+        <h3 class="font-bold text-sm mb-1 flex items-center gap-1">
+          <i class="fa ${randomCard.icon} text-xs"></i> ${randomCard.name}
+        </h3>
+        <p class="text-xs text-gray-400 mb-2">${randomCard.desc}</p>
+        <div class="mt-auto flex justify-center">
+          <button class="play-card-btn text-xs bg-${randomCard.color}/20 hover:bg-${randomCard.color}/30 text-${randomCard.color} px-2 py-1 rounded transition-colors">
+            打出
+          </button>
+        </div>
+      `;
+      
+      // 添加卡牌到手牌，使用appendChild确保DOM正确更新
+      handCards.appendChild(cardElement);
+      
+      // 为新卡牌添加点击事件
+      const playBtn = cardElement.querySelector('.play-card-btn');
+      playBtn.addEventListener('click', function() {
+        playCard(cardElement, randomCard);
+      });
+      
+      updateGameState();
+    }
+    
+    // 打出卡牌
+    function playCard(cardElement, cardData) {
+      if (gameState.gold < cardData.cost) {
+        // 金币不足提示 - 确保动画只触发一次
+        cardElement.classList.remove('animate-shake');
+        void cardElement.offsetWidth; // 触发重绘
+        cardElement.classList.add('animate-shake');
+        setTimeout(() => cardElement.classList.remove('animate-shake'), 500);
+        return;
+      }
+      
+      // 扣除金币
+      gameState.gold -= cardData.cost;
+      
+      // 卡牌效果处理
+      handleCardEffect(cardData);
+      
+      // 移除卡牌
+      cardElement.classList.add('scale-0', 'opacity-0');
+      setTimeout(() => {
+        if (cardElement.parentNode) {
+          cardElement.parentNode.removeChild(cardElement);
+        }
+      }, 300);
+      
+      updateGameState();
+    }
+    
+    // 处理卡牌效果
+    function handleCardEffect(cardData) {
+      // 创建伤害/效果文本
+      const effectText = document.createElement('div');
+      effectText.className = 'fixed top-1/4 left-1/2 transform -translate-x-1/2 bg-accent/80 text-white px-4 py-2 rounded-lg text-sm font-bold z-40 animate-damage';
+      effectText.textContent = `使用了 ${cardData.name}`;
+      document.body.appendChild(effectText);
+      
+      setTimeout(() => {
+        if (effectText.parentNode) {
+          effectText.parentNode.removeChild(effectText);
+        }
+      }, 800);
+      
+      // 根据卡牌类型执行不同效果
+      switch (cardData.name) {
+        case '死磕一题':
+          if (gameState.enemyCharacters.length > 0) {
+            const targetIndex = Math.floor(Math.random() * gameState.enemyCharacters.length);
+            gameState.enemyCharacters[targetIndex].currentHealth -= 18;
+            showDamageIndicator('enemy-field', targetIndex, 18);
+          }
+          break;
+          
+        case '先打暴力':
+          if (gameState.playerCharacters.length > 0) {
+            const targetIndex = Math.floor(Math.random() * gameState.playerCharacters.length);
+            gameState.playerCharacters[targetIndex].currentHealth += 10;
+            if (gameState.playerCharacters[targetIndex].currentHealth > gameState.playerCharacters[targetIndex].health) {
+              gameState.playerCharacters[targetIndex].currentHealth = gameState.playerCharacters[targetIndex].health;
+            }
+            showHealIndicator('player-field', targetIndex, 10);
+          }
+          break;
+          
+        case '对拍':
+          if (gameState.playerCharacters.length > 0) {
+            const targetIndex = Math.floor(Math.random() * gameState.playerCharacters.length);
+            const originalChar = gameState.playerCharacters[targetIndex];
+            
+            // 复制角色（1星）
+            const newChar = {
+              ...originalChar,
+              id: originalChar.id + '_copy_' + Date.now(),
+              currentHealth: originalChar.health,
+              stars: 1,
+              shield: 0,
+              stunned: false,
+              skill: false,
+              rendered: false // 标记为未渲染，以便触发召唤动画
+            };
+            
+            gameState.playerCharacters.push(newChar);
+            updateGameState(); // 立即更新战场显示新角色
+          }
+          break;
+          
+        case '内存优化':
+          gameState.gold += 5;
+          break;
+          
+        case '断点调试':
+          if (gameState.enemyCharacters.length > 0) {
+            const targetIndex = Math.floor(Math.random() * gameState.enemyCharacters.length);
+            gameState.enemyCharacters[targetIndex].stunned = true;
+            showStunIndicator('enemy-field', targetIndex);
+          }
+          break;
+          
+        case '测大样例':
+          gameState.playerCharacters.forEach(char => {
+            char.shield = (char.shield || 0) + 5;
+          });
+          updateGameState(); // 立即更新战场显示护盾
+          break;
+      }
+    }
+    
+    // 显示伤害指示
+    function showDamageIndicator(fieldId, index, value) {
+      const field = document.getElementById(fieldId);
+      if (index >= field.children.length) return; // 检查索引有效性
+      
+      const charElement = field.children[index];
+      if (!charElement) return;
+      
+      // 确保动画只触发一次
+      charElement.classList.remove('animate-shake');
+      void charElement.offsetWidth; // 触发重绘
+      charElement.classList.add('animate-shake');
+      setTimeout(() => charElement.classList.remove('animate-shake'), 500);
+      
+      const damageIndicator = document.createElement('div');
+      damageIndicator.className = 'absolute top-1 left-1/2 transform -translate-x-1/2 text-red-500 font-bold text-sm animate-damage';
+      damageIndicator.textContent = `-${value}`;
+      charElement.appendChild(damageIndicator);
+      
+      setTimeout(() => {
+        if (damageIndicator.parentNode) {
+          damageIndicator.parentNode.removeChild(damageIndicator);
+        }
+      }, 800);
+    }
+    
+    // 显示治疗指示
+    function showHealIndicator(fieldId, index, value) {
+      const field = document.getElementById(fieldId);
+      if (index >= field.children.length) return;
+      
+      const charElement = field.children[index];
+      if (!charElement) return;
+      
+      const healIndicator = document.createElement('div');
+      healIndicator.className = 'absolute top-1 left-1/2 transform -translate-x-1/2 text-green-500 font-bold text-sm animate-damage';
+      healIndicator.textContent = `+${value}`;
+      charElement.appendChild(healIndicator);
+      
+      setTimeout(() => {
+        if (healIndicator.parentNode) {
+          healIndicator.parentNode.removeChild(healIndicator);
+        }
+      }, 800);
+    }
+    
+    // 显示护盾指示
+    function showShieldIndicator(fieldId, index, value) {
+      const field = document.getElementById(fieldId);
+      if (index >= field.children.length) return;
+      
+      const charElement = field.children[index];
+      if (!charElement) return;
+      
+      const shieldIndicator = document.createElement('div');
+      shieldIndicator.className = 'absolute top-1 left-1/2 transform -translate-x-1/2 text-blue-400 font-bold text-sm animate-damage';
+      shieldIndicator.innerHTML = `<i class="fa fa-shield"></i> +${value}`;
+      charElement.appendChild(shieldIndicator);
+      
+      setTimeout(() => {
+        if (shieldIndicator.parentNode) {
+          shieldIndicator.parentNode.removeChild(shieldIndicator);
+        }
+      }, 800);
+    }
+    
+    // 显示眩晕指示
+    function showStunIndicator(fieldId, index) {
+      const field = document.getElementById(fieldId);
+      if (index >= field.children.length) return;
+      
+      const charElement = field.children[index];
+      if (!charElement) return;
+      
+      const stunIndicator = document.createElement('div');
+      stunIndicator.className = 'absolute -top-2 left-1/2 transform -translate-x-1/2 text-yellow-500 animate-pulse';
+      stunIndicator.innerHTML = `<i class="fa fa-bolt"></i>`;
+      charElement.appendChild(stunIndicator);
+      
+      // 眩晕效果会在本回合结束时清除
+    }
+    
+    // 生成商店角色
+    function generateShopCharacters() {
+      const shop = document.getElementById('shop-characters');
+      shop.innerHTML = '';
+      gameState.shopCharacters = [];
+      
+      // 生成4个商店角色
+      for (let i = 0; i < 4; i++) {
+        // 根据概率选择角色稀有度
+        const rand = Math.random();
+        let rarity, charPool;
+        
+        if (rand < gameConfig.shopProbabilities.legend) {
+          rarity = 'legend';
+          charPool = gameConfig.characterPool.legend;
+        } else if (rand < gameConfig.shopProbabilities.legend + gameConfig.shopProbabilities.epic) {
+          rarity = 'epic';
+          charPool = gameConfig.characterPool.epic;
+        } else if (rand < gameConfig.shopProbabilities.legend + gameConfig.shopProbabilities.epic + gameConfig.shopProbabilities.rare) {
+          rarity = 'rare';
+          charPool = gameConfig.characterPool.rare;
+        } else {
+          rarity = 'normal';
+          charPool = gameConfig.characterPool.normal;
+        }
+        
+        // 从对应稀有度的角色池中随机选择
+        const randomChar = charPool[Math.floor(Math.random() * charPool.length)];
+        
+        // 添加到商店角色列表
+        const shopChar = {
+          ...randomChar,
+          rarity: rarity,
+          stars: 1 // 新角色初始1星
+        };
+        gameState.shopCharacters.push(shopChar);
+        
+        // 创建商店角色元素
+        const charElement = document.createElement('div');
+        charElement.className = `card-hover bg-gray-900 rounded-lg p-2 border border-${randomChar.color}/30 flex flex-col`;
+        charElement.dataset.index = i;
+        
+        // 稀有度标签
+        let rarityHtml = '';
+        switch (rarity) {
+          case 'rare':
+            rarityHtml = '<span class="absolute top-1 right-1 bg-rare/20 text-rare text-[8px] px-1 rounded">稀有</span>';
+            break;
+          case 'epic':
+            rarityHtml = '<span class="absolute top-1 right-1 bg-epic/20 text-epic text-[8px] px-1 rounded">史诗</span>';
+            break;
+          case 'legend':
+            rarityHtml = '<span class="absolute top-1 right-1 bg-legend/20 text-legend text-[8px] px-1 rounded">传说</span>';
+            break;
+        }
+        
+        charElement.innerHTML = `
+          <div class="relative">
+            ${rarityHtml}
+            <div class="w-10 h-10 bg-${randomChar.color}/10 rounded-full flex items-center justify-center mx-auto mb-1">
+              <i class="fa ${randomChar.icon} text-${randomChar.color}"></i>
+            </div>
+          </div>
+          <h3 class="font-bold text-xs mb-1 text-center">${randomChar.name}</h3>
+          <div class="text-[10px] text-gray-400 mb-2 text-center">
+            <i class="fa fa-crosshairs text-red-400"></i> ${randomChar.attack}
+            <i class="fa fa-heart text-red-500 ml-1"></i> ${randomChar.health}
+          </div>
+          <div class="mt-auto flex justify-center">
+            <button class="buy-char-btn text-xs bg-accent/20 hover:bg-accent/30 text-accent px-2 py-1 rounded transition-colors flex items-center gap-1">
+              <i class="fa fa-coins"></i> ${randomChar.cost}
+            </button>
+          </div>
+        `;
+        
+        shop.appendChild(charElement);
+      }
+      
+      // 添加购买事件监听 (使用事件委托确保动态元素也能响应)
+      shop.addEventListener('click', function(e) {
+        const buyBtn = e.target.closest('.buy-char-btn');
+        if (buyBtn) {
+          const charElement = buyBtn.closest('div[data-index]');
+          if (charElement) {
+            const index = parseInt(charElement.dataset.index);
+            buyCharacter(index);
+          }
+        }
+      });
+    }
+    
+    // 购买角色
+    function buyCharacter(shopIndex) {
+      // 验证商店索引有效性
+      if (shopIndex < 0 || shopIndex >= gameState.shopCharacters.length) {
+        console.error('无效的商店角色索引:', shopIndex);
+        return;
+      }
+      
+      const char = gameState.shopCharacters[shopIndex];
+      
+      // 验证金币是否充足
+      if (gameState.gold < char.cost) {
+        // 金币不足提示
+        const charElement = document.querySelector(`#shop-characters > div[data-index="${shopIndex}"]`);
+        if (charElement) {
+          charElement.classList.remove('animate-shake');
+          void charElement.offsetWidth; // 触发重绘
+          charElement.classList.add('animate-shake');
+          setTimeout(() => charElement.classList.remove('animate-shake'), 500);
+        }
+        return;
+      }
+      
+      // 扣除金币
+      gameState.gold -= char.cost;
+      
+      // 创建完整的角色数据对象
+      const newCharacter = {
+        id: char.id + '_' + Date.now(), // 确保ID唯一
+        name: char.name,
+        attack: char.attack,
+        health: char.health,
+        currentHealth: char.health, // 初始生命值为最大值
+        cost: char.cost,
+        icon: char.icon,
+        color: char.color,
+        rarity: char.rarity,
+        stars: 1,
+        shield: 0,
+        stunned: false,
+        skill: false,
+        rendered: false // 标记为未渲染，以便触发召唤动画
+      };
+      
+      // 添加到玩家战场
+      gameState.playerCharacters.push(newCharacter);
+      
+      // 从商店UI中移除
+      const shop = document.getElementById('shop-characters');
+      const charElement = shop.children[shopIndex];
+      if (charElement) {
+        charElement.classList.add('scale-0', 'opacity-0');
+        setTimeout(() => {
+          if (charElement.parentNode) {
+            charElement.parentNode.removeChild(charElement);
+          }
+          // 从商店数据中移除
+          gameState.shopCharacters.splice(shopIndex, 1);
+        }, 300);
+      }
+      
+      // 强制更新游戏状态和UI
+      updateGameState();
+    }
+    
+    // 刷新商店
+    refreshShopBtn.addEventListener('click', function() {
+      if (gameState.gold < 2) return;
+      
+      // 扣除金币
+      gameState.gold -= 2;
+      
+      // 刷新效果
+      const shop = document.getElementById('shop-characters');
+      shop.classList.add('opacity-0');
+      
+      setTimeout(() => {
+        generateShopCharacters();
+        shop.classList.remove('opacity-0');
+        updateGameState();
+      }, 300);
+    });
+    
+    // 自动攻击逻辑
+    function autoAttack() {
+      return new Promise(resolve => {
+        // 玩家角色先攻击
+        let attackOrder = [...gameState.playerCharacters.map((char, i) => ({
+          type: 'player',
+          index: i,
+          char: char
+        }))];
+        
+        // 然后是敌方角色攻击
+        attackOrder = attackOrder.concat(gameState.enemyCharacters.map((char, i) => ({
+          type: 'enemy',
+          index: i,
+          char: char
+        })));
+        
+        // 随机打乱攻击顺序
+        attackOrder.sort(() => Math.random() - 0.5);
+        
+        // 执行攻击
+        let attackIndex = 0;
+        const attackInterval = setInterval(() => {
+          if (attackIndex >= attackOrder.length) {
+            clearInterval(attackInterval);
+            // 清理死亡单位
+            cleanupDeadCharacters();
+            resolve();
+            return;
+          }
+          
+          const attacker = attackOrder[attackIndex];
+          
+          // 如果被眩晕，跳过攻击
+          if (attacker.char.stunned) {
+            attackIndex++;
+            return;
+          }
+          
+          if (attacker.type === 'player') {
+            // 玩家角色攻击敌方
+            if (gameState.enemyCharacters.length > 0) {
+              const targetIndex = Math.floor(Math.random() * gameState.enemyCharacters.length);
+              const target = gameState.enemyCharacters[targetIndex];
+              
+              // 3星角色有技能加成
+              let damage = attacker.char.attack;
+              if (attacker.char.stars >= 3) {
+                damage = Math.floor(damage * 1.5); // 3星及以上造成150%伤害
+              }
+              
+              target.currentHealth -= damage;
+              
+              // 显示攻击动画和伤害
+              const attackerElement = document.querySelector(`#player-field > div[data-index="${attacker.index}"]`);
+              if (attackerElement) {
+                attackerElement.classList.remove('animate-attack');
+                void attackerElement.offsetWidth; // 触发重绘
+                attackerElement.classList.add('animate-attack');
+                setTimeout(() => attackerElement.classList.remove('animate-attack'), 600);
+              }
+              
+              showDamageIndicator('enemy-field', targetIndex, damage);
+            } else {
+              // 没有敌方角色，直接攻击敌方生命值
+              gameState.enemyHealth -= attacker.char.attack;
+              if (gameState.enemyHealth < 0) gameState.enemyHealth = 0;
+              
+              // 显示伤害
+              const damageIndicator = document.createElement('div');
+              damageIndicator.className = 'fixed top-[10%] right-[20%] bg-red-500/80 text-white px-3 py-1 rounded text-sm font-bold animate-damage';
+              damageIndicator.textContent = `-${attacker.char.attack}`;
+              document.body.appendChild(damageIndicator);
+              
+              setTimeout(() => {
+                if (damageIndicator.parentNode) {
+                  damageIndicator.parentNode.removeChild(damageIndicator);
+                }
+              }, 800);
+            }
+          } else {
+            // 敌方角色攻击玩家
+            if (gameState.playerCharacters.length > 0) {
+              const targetIndex = Math.floor(Math.random() * gameState.playerCharacters.length);
+              const target = gameState.playerCharacters[targetIndex];
+              
+              // 计算伤害（考虑护盾）
+              let damage = attacker.char.attack;
+              if (target.shield > 0) {
+                const shieldAbsorb = Math.min(damage, target.shield);
+                target.shield -= shieldAbsorb;
+                damage -= shieldAbsorb;
+                
+                if (damage <= 0) {
+                  showShieldIndicator('player-field', targetIndex, -shieldAbsorb);
+                } else {
+                  target.currentHealth -= damage;
+                  showDamageIndicator('player-field', targetIndex, damage);
+                }
+              } else {
+                target.currentHealth -= damage;
+                showDamageIndicator('player-field', targetIndex, damage);
+              }
+              
+              // 显示攻击动画
+              const attackerElement = document.querySelector(`#enemy-field > div[data-index="${attacker.index}"]`);
+              if (attackerElement) {
+                attackerElement.classList.remove('animate-attack');
+                void attackerElement.offsetWidth; // 触发重绘
+                attackerElement.classList.add('animate-attack');
+                setTimeout(() => attackerElement.classList.remove('animate-attack'), 600);
+              }
+            } else {
+              // 没有玩家角色，直接攻击玩家生命值
+              gameState.health -= attacker.char.attack;
+              if (gameState.health < 0) gameState.health = 0;
+              
+              // 显示伤害
+              const damageIndicator = document.createElement('div');
+              damageIndicator.className = 'fixed top-[10%] left-[20%] bg-red-500/80 text-white px-3 py-1 rounded text-sm font-bold animate-damage';
+              damageIndicator.textContent = `-${attacker.char.attack}`;
+              document.body.appendChild(damageIndicator);
+              
+              setTimeout(() => {
+                if (damageIndicator.parentNode) {
+                  damageIndicator.parentNode.removeChild(damageIndicator);
+                }
+              }, 800);
+            }
+          }
+          
+          attackIndex++;
+          updateGameState();
+        }, 600); // 每次攻击间隔600ms
+      });
+    }
+    
+    // 清理死亡单位
+    function cleanupDeadCharacters() {
+      // 清理玩家死亡单位
+      gameState.playerCharacters = gameState.playerCharacters.filter(char => char.currentHealth > 0);
+      
+      // 清理敌方死亡单位
+      gameState.enemyCharacters = gameState.enemyCharacters.filter(char => char.currentHealth > 0);
+      
+      updateGameState();
+    }
+    
+    // 敌方回合 - 购买角色
+    function enemyBuyPhase() {
+      return new Promise(resolve => {
+        // 敌方每回合获得金币
+        const enemyGold = 5 + Math.floor(gameState.round / 2);
+        
+        // 简单AI逻辑：敌方会购买1-2个角色（如果有足够金币）
+        setTimeout(() => {
+          // 随机选择商店中1-2个角色购买
+          const shopCopy = [...gameConfig.characterPool.normal, ...gameConfig.characterPool.rare];
+          const buyCount = Math.floor(Math.random() * 2) + 1;
+          
+          for (let i = 0; i < buyCount; i++) {
+            const randomChar = shopCopy[Math.floor(Math.random() * shopCopy.length)];
+            
+            if (enemyGold >= randomChar.cost) {
+              // 添加到敌方战场
+              gameState.enemyCharacters.push({
+                id: randomChar.id + '_enemy_' + Date.now(),
+                name: randomChar.name,
+                attack: randomChar.attack,
+                health: randomChar.health,
+                currentHealth: randomChar.health,
+                icon: randomChar.icon,
+                shield: 0,
+                stunned: false,
+                rendered: false // 标记为未渲染，以便触发召唤动画
+              });
+            }
+          }
+          
+          resolve();
+        }, 1000);
+      });
+    }
+    
+    // 结束回合
+    async function endTurn() {
+      clearInterval(timerInterval);
+      endTurnBtn.disabled = true;
+      endTurnBtn.classList.add('opacity-50', 'cursor-not-allowed');
+      
+      // 显示回合结束信息
+      const turnText = document.createElement('div');
+      turnText.className = 'fixed top-1/4 left-1/2 transform -translate-x-1/2 bg-primary/80 text-white px-4 py-2 rounded-lg text-sm font-bold z-40 animate-damage';
+      turnText.textContent = `回合结束，开始自动攻击`;
+      document.body.appendChild(turnText);
+      
+      // 执行自动攻击
+      await autoAttack();
+      
+      // 检查游戏是否结束
+      if (checkGameOver()) {
+        if (turnText.parentNode) {
+          turnText.parentNode.removeChild(turnText);
+        }
+        return;
+      }
+      
+      // 回合结束，重置状态
+      gameState.round++;
+      gameState.gold += 5 + Math.floor(gameState.round / 2); // 每回合金币增加
+      gameState.drawCount = 2;
+      gameState.upgradePoints += 1 + Math.floor(gameState.round / 3); // 每回合获得升级点数
+      
+      // 清除眩晕状态
+      gameState.playerCharacters.forEach(char => char.stunned = false);
+      gameState.enemyCharacters.forEach(char => char.stunned = false);
+      
+      // 敌方购买角色
+      turnText.textContent = `敌方行动中...`;
+      await enemyBuyPhase();
+      
+      // 刷新商店
+      generateShopCharacters();
+      
+      // 移除信息文本
+      setTimeout(() => {
+        if (turnText.parentNode) {
+          turnText.parentNode.removeChild(turnText);
+        }
+      }, 500);
+      
+      // 重新开始计时器
+      endTurnBtn.disabled = false;
+      endTurnBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+      updateGameState();
+      startTimer();
+    }
+    
+    // 检查游戏是否结束
+    function checkGameOver() {
+      if (gameState.health <= 0) {
+        // 玩家失败
+        gameOverTitle.textContent = '战斗失败';
+        gameOverMessage.textContent = '你的生命值已耗尽';
+        gameOverIcon.innerHTML = '<i class="fa fa-times-circle text-2xl text-red-500"></i>';
+        gameOverIcon.className = 'w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4';
+        gameOverModal.classList.remove('hidden');
+        return true;
+      }
+      
+      if (gameState.enemyHealth <= 0) {
+        // 玩家胜利
+        gameOverModal.classList.remove('hidden');
+        return true;
+      }
+      
+      return false;
+    }
+    
+    // 初始化游戏
+    function initGame() {
+      // 重置游戏状态
+      gameState.round = 1;
+      gameState.gold = 10;
+      gameState.health = 100;
+      gameState.enemyHealth = 80;
+      gameState.drawCount = 2;
+      gameState.upgradePoints = 0;
+      gameState.playerCharacters = [];
+      gameState.enemyCharacters = [];
+      
+      // 添加初始玩家角色
+      gameState.playerCharacters.push({
+        id: 'think_initial',
+        name: 'freopen',
+        attack: 5,
+        health: 15,
+        currentHealth: 15,
+        cost: 2,
+        icon: 'fa-code',
+        color: 'primary',
+        rarity: 'normal',
+        stars: 1,
+        shield: 0,
+        stunned: false,
+        skill: false,
+        rendered: false
+      });
+      
+      // 添加初始敌方角色
+      gameState.enemyCharacters.push({
+        id: 'bug',
+        name: '二分',
+        attack: 5,
+        health: 20,
+        currentHealth: 20,
+        icon: 'fa-bug',
+        shield: 0,
+        stunned: false,
+        rendered: false
+      }, {
+        id: 'logic',
+        name: 'AC自动机',
+        attack: 7,
+        health: 25,
+        currentHealth: 25,
+        icon: 'fa-exclamation-triangle',
+        shield: 0,
+        stunned: false,
+        rendered: false
+      });
+      
+      // 清空手牌
+      document.getElementById('hand-cards').innerHTML = '';
+      
+      // 初始抽4张牌
+      for (let i = 0; i < 4; i++) {
+        drawCard();
+      }
+      
+      // 生成商店角色
+      generateShopCharacters();
+      
+      // 更新游戏状态
+      updateGameState();
+      startTimer();
+    }
+    
+    // 事件监听
+    drawCardBtn.addEventListener('click', drawCard);
+    endTurnBtn.addEventListener('click', endTurn);
+    
+    // 帮助模态框
+    helpBtn.addEventListener('click', () => {
+      helpModal.classList.remove('hidden');
+      clearInterval(timerInterval);
+    });
+    
+    closeHelp.addEventListener('click', () => {
+      helpModal.classList.add('hidden');
+      startTimer();
+    });
+    
+    // 游戏结束模态框
+    newGameBtn.addEventListener('click', () => {
+      gameOverModal.classList.add('hidden');
+      initGame();
+    });
+    
+    closeGameOver.addEventListener('click', () => {
+      gameOverModal.classList.add('hidden');
+      initGame();
+    });
+    
+    // 初始化游戏
+    window.addEventListener('DOMContentLoaded', initGame);
+  </script>
+</body>
+</html>

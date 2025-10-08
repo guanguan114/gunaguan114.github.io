@@ -1,0 +1,1526 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>节奏大师 - 音乐游戏</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    
+    <!-- 配置Tailwind自定义颜色和字体 -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6C5CE7',
+                        secondary: '#00B894',
+                        accent: '#FD79A8',
+                        dark: '#2D3436',
+                        light: '#F8F9FA',
+                        multi: '#FF9800',      // 连击音符颜色
+                        change: '#9C27B0'     // 切换轨道音符颜色
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .judge-line {
+                @apply border-2 border-accent relative z-10;
+            }
+            .note {
+                @apply absolute h-14 w-20 rounded-md flex items-center justify-center text-white text-xl font-bold cursor-pointer transition-all duration-100;
+            }
+            .key-button {
+                @apply w-20 h-20 rounded-lg flex items-center justify-center text-3xl font-bold transition-all duration-150 transform hover:scale-105 active:scale-95;
+            }
+            .game-container {
+                @apply relative w-full h-[500px] border-4 border-primary rounded-xl overflow-hidden bg-gradient-to-b from-dark to-dark/80;
+            }
+            .combo-animation {
+                animation: comboPopup 0.5s ease-out forwards;
+            }
+            .judgment {
+                animation: judgmentFade 1s ease-out forwards;
+                @apply whitespace-nowrap;
+            }
+            .key-press {
+                animation: keyPress 0.15s ease-in-out;
+            }
+            .track {
+                @apply absolute top-0 bottom-0 w-full flex;
+            }
+            .track-lane {
+                @apply relative flex-1;
+            }
+            .track-divider {
+                @apply absolute top-0 bottom-0 w-0.5 bg-white/30 right-0;
+            }
+            .judgment-container {
+                @apply pointer-events-none;
+            }
+            /* 连击音符样式 */
+            .multi-note-container {
+                @apply absolute w-20 transition-all duration-100;
+                z-index: 5;
+            }
+            .multi-note-head {
+                @apply h-14 bg-multi rounded-t-md border-b border-white/30 flex flex-col items-center justify-center text-white text-xl font-bold;
+                z-index: 6;
+            }
+            .multi-note-body {
+                @apply bg-multi/70 rounded-b-md flex items-center justify-center text-white font-bold;
+                z-index: 5;
+            }
+            .multi-active {
+                @apply bg-multi/90;
+            }
+            .click-count {
+                @apply text-xs bg-black/30 rounded-full w-6 h-6 flex items-center justify-center absolute top-1 right-1;
+            }
+            /* 切换轨道音符样式 */
+            .change-note {
+                @apply absolute h-14 w-20 rounded-md flex items-center justify-center text-white text-xl font-bold cursor-pointer transition-all duration-300;
+                z-index: 7;
+            }
+            .change-animation {
+                animation: changeTrack 0.3s ease-in-out;
+            }
+        }
+        
+        @keyframes comboPopup {
+            0% { transform: translateY(20px); opacity: 0; }
+            50% { transform: translateY(-10px); opacity: 1; }
+            100% { transform: translateY(-30px); opacity: 0; }
+        }
+        
+        @keyframes judgmentFade {
+            0% { opacity: 1; transform: scale(1); }
+            100% { opacity: 0; transform: scale(1.5); }
+        }
+        
+        @keyframes keyPress {
+            0% { transform: scale(1); }
+            50% { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes changeTrack {
+            0% { transform: translateX(0); opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col items-center justify-center p-4 font-sans">
+    <div class="max-w-4xl w-full mx-auto bg-white rounded-2xl shadow-2xl overflow-hidden">
+        <!-- 游戏标题和状态 -->
+        <header class="bg-primary text-white p-6 text-center">
+            <h1 class="text-[clamp(1.5rem,3vw,2.5rem)] font-bold mb-2">节奏大师</h1>
+            <div class="flex flex-wrap justify-center items-center gap-4 md:gap-8 text-lg">
+                <div class="flex items-center">
+                    <i class="fa fa-star text-yellow-300 mr-2"></i>
+                    <span>分数: <span id="score" class="font-bold">0</span></span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fa fa-link text-green-300 mr-2"></i>
+                    <span>连击: <span id="combo" class="font-bold">0</span></span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fa fa-clock-o text-red-300 mr-2"></i>
+                    <span>时间: <span id="time" class="font-bold">0</span>s</span>
+                </div>
+            </div>
+        </header>
+        
+        <!-- 游戏开始界面 -->
+        <div id="start-screen" class="p-8 text-center">
+            <h2 class="text-2xl font-bold mb-6 text-primary">准备好挑战了吗？</h2>
+            
+            <!-- 歌曲选择和文件上传 -->
+            <div class="mb-8">
+                <label class="block text-gray-700 mb-2">选择歌曲或上传自定义谱面:</label>
+                <div class="flex flex-col sm:flex-row gap-4 justify-center items-center">
+                    <select id="song-select" class="px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary">
+                        <option value="random">随机生成</option>
+                        <option value="hello">Hello</option>
+                        <option value="test">测试歌曲</option>
+                    </select>
+                    <label class="flex items-center justify-center px-4 py-2 bg-gray-200 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-300 transition-colors">
+                        <i class="fa fa-upload mr-2"></i> 上传music.txt
+                        <input type="file" id="file-upload" accept=".txt" class="hidden">
+                    </label>
+                </div>
+                <p id="current-song" class="mt-2 text-gray-500 text-sm">当前: 随机生成</p>
+            </div>
+            
+            <div class="mb-6 text-left max-w-md mx-auto">
+                <p class="text-gray-600 mb-3"><span class="inline-block w-24">普通音符:</span> 落到判定线时按下对应按键 (A, S, D, F)</p>
+                <p class="text-gray-600 mb-3"><span class="inline-block w-24">连击音符:</span> 区间内点击指定次数 (显示Xn)</p>
+                <p class="text-gray-600"><span class="inline-block w-24">变换音符:</span> 会突然切换到其他音轨，注意追踪</p>
+            </div>
+            <div class="flex justify-center gap-4 mb-8">
+                <div class="key-button bg-red-500">A</div>
+                <div class="key-button bg-yellow-500">S</div>
+                <div class="key-button bg-green-500">D</div>
+                <div class="key-button bg-blue-500">F</div>
+            </div>
+            <button id="start-button" class="bg-primary hover:bg-primary/80 text-white font-bold py-3 px-8 rounded-lg text-lg transition-all transform hover:scale-105 active:scale-95">
+                开始游戏 <i class="fa fa-play ml-2"></i>
+            </button>
+        </div>
+        
+        <!-- 游戏主界面 -->
+        <div id="game-screen" class="hidden">
+            <!-- 游戏区域 -->
+            <div class="game-container mx-6 my-4">
+                <!-- 音轨区域 -->
+                <div class="track">
+                    <!-- 4个轨道 -->
+                    <div class="track-lane" data-lane="0">
+                        <div class="track-divider"></div>
+                        <div class="notes-lane flex justify-center"></div>
+                    </div>
+                    <div class="track-lane" data-lane="1">
+                        <div class="track-divider"></div>
+                        <div class="notes-lane flex justify-center"></div>
+                    </div>
+                    <div class="track-lane" data-lane="2">
+                        <div class="track-divider"></div>
+                        <div class="notes-lane flex justify-center"></div>
+                    </div>
+                    <div class="track-lane" data-lane="3">
+                        <div class="notes-lane flex justify-center"></div>
+                    </div>
+                </div>
+                
+                <!-- 判定线 -->
+                <div class="judge-line h-1 top-[80%] w-full"></div>
+                
+                <!-- 按键提示区 -->
+                <div class="absolute bottom-0 left-0 right-0 h-20 flex">
+                    <div class="flex-1 flex items-center justify-center">
+                        <div class="key-button bg-red-500" id="key-a">A</div>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center">
+                        <div class="key-button bg-yellow-500" id="key-s">S</div>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center">
+                        <div class="key-button bg-green-500" id="key-d">D</div>
+                    </div>
+                    <div class="flex-1 flex items-center justify-center">
+                        <div class="key-button bg-blue-500" id="key-f">F</div>
+                    </div>
+                </div>
+                
+                <!-- 判定结果显示区 -->
+                <div id="judgment-container" class="absolute top-[70%] left-0 right-0 flex justify-center">
+                    <div id="judgment-inner" class="relative w-full flex justify-center"></div>
+                </div>
+                
+                <!-- 连击显示 -->
+                <div id="combo-container" class="absolute top-[40%] left-0 right-0 flex justify-center pointer-events-none"></div>
+            </div>
+            
+            <!-- 游戏控制 -->
+            <div class="p-4 flex justify-center gap-4">
+                <button id="pause-button" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg transition-all">
+                    <i class="fa fa-pause mr-1"></i> 暂停
+                </button>
+                <button id="restart-button" class="bg-primary hover:bg-primary/80 text-white font-bold py-2 px-6 rounded-lg transition-all">
+                    <i class="fa fa-refresh mr-1"></i> 重新开始
+                </button>
+            </div>
+        </div>
+        
+        <!-- 游戏结束界面 -->
+        <div id="end-screen" class="hidden p-8 text-center">
+            <h2 class="text-2xl font-bold mb-4 text-accent">游戏结束!</h2>
+            <div class="mb-6 p-4 bg-gray-100 rounded-lg inline-block">
+                <p class="text-xl mb-2">最终得分: <span id="final-score" class="font-bold text-primary text-2xl">0</span></p>
+                <p class="text-xl">最高连击: <span id="max-combo" class="font-bold text-secondary text-2xl">0</span></p>
+            </div>
+            <button id="play-again-button" class="bg-primary hover:bg-primary/80 text-white font-bold py-3 px-8 rounded-lg text-lg transition-all transform hover:scale-105 active:scale-95">
+                再玩一次 <i class="fa fa-refresh ml-2"></i>
+            </button>
+        </div>
+    </div>
+    
+    <footer class="mt-8 text-gray-500 text-sm">
+        <p>使用键盘 A, S, D, F 键进行游戏 | 节奏大师 &copy; 2023</p>
+    </footer>
+
+    <script>
+        // 游戏状态和配置
+        const gameState = {
+            isPlaying: false,
+            isPaused: false,
+            score: 0,
+            combo: 0,
+            maxCombo: 0,
+            time: 0,
+            baseSpeed: 6, // 基础速度
+            currentSpeed: 6, // 当前速度
+            baseSpawnRate: 1500, // 基础生成间隔（毫秒）
+            minSpawnInterval: 400, // 最小生成间隔
+            maxSpawnInterval: 2000, // 最大生成间隔
+            notes: [], // 普通音符
+            multiNotes: [], // 连击音符
+            changeNotes: [], // 变换轨道音符
+            noteId: 0,
+            gameDuration: 1000000, // 默认infinity秒游戏时间
+            timer: null,
+            spawnTimer: null,
+            laneElements: [], // 存储每个轨道的DOM元素
+            keyStates: { // 按键状态
+                a: false,
+                s: false,
+                d: false,
+                f: false
+            },
+            currentSong: null, // 当前歌曲
+            songEvents: [], // 从文件加载的歌曲事件
+            eventIndex: 0, // 当前处理的事件索引
+            customSongLoaded: false // 是否加载了自定义歌曲
+        };
+        
+        // 音符配置
+        const noteConfig = {
+            lanes: 4, // 4个轨道
+            colors: ['bg-red-500', 'bg-yellow-500', 'bg-green-500', 'bg-blue-500'],
+            changeColor: 'bg-change', // 变换音符颜色
+            keys: ['a', 's', 'd', 'f'],
+            judgeOffset: 30, // 基础判定偏移量（像素）
+            multiJudgeRange: 100, // 连击音符判定区间（判定线上下各100px）
+            judgeTexts: [
+                'PERFECT!', 'GREAT!', 'GOOD!', 'MISS', 
+                '点击!', '完成连击!', '连击失败!', '变换!'
+            ],
+            judgeScores: [100, 80, 50, 0, 10, 50, -20, 70],
+            judgeColors: [
+                'text-yellow-400', 'text-green-400', 'text-blue-400', 'text-red-400',
+                'text-orange-400', 'text-purple-400', 'text-red-500', 'text-pink-400'
+            ],
+            // 音符类型概率分布
+            noteTypeProbabilities: {
+                normal: 0.95,    // 普通音符
+                multi: 0.05,     // 连击音符
+                change: 0.00     // 变换轨道音符
+            },
+            // 连击音符配置
+            multiNote: {
+                minLength: 200,  // 区间长度
+                maxLength: 300,
+                minClicks: 2,    // 最少点击次数
+                maxClicks: 3     // 最多点击次数（降低难度，因为新增了change音符）
+            },
+            // 变换轨道音符配置
+            changeNote: {
+                minChangeTime: 0.5, // 最小生成后多久可能变换（秒）
+                maxChangeTime: 1.5, // 最大生成后多久可能变换（秒）
+                changeChance: 1   // 变换概率（100%会变换）
+            }
+        };
+        
+        // 示例歌曲数据
+        const sampleSongs = {
+            "hello": {
+                name: "Hello",
+                duration: 45,
+                events: [
+                    {time: 0.5, type: 'c', key: 'A'},
+                    {time: 1.0, type: 'c', key: 'S'},
+                    {time: 1.5, type: 'c', key: 'D'},
+                    {time: 2.0, type: 'c', key: 'F'},
+                    {time: 2.5, type: 'c', key: 'A'},
+                    {time: 3.0, type: 'm', key: 'S', clicks: 2}, // 2连击音符
+                    {time: 3.5, type: 'h', key: 'D'}, // 变换音符
+                    {time: 4.0, type: 'c', key: 'D'},
+                    {time: 4.5, type: 'c', key: 'D'},
+                    {time: 5.0, type: 'h', key: 'F'}, // 变换音符
+                ]
+            },
+            "test": {
+                name: "测试歌曲（含多种音符）",
+                duration: 30,
+                events: [
+                    {time: 0.5, type: 'c', key: 'A'},
+                    {time: 1.0, type: 'h', key: 'S'}, // 变换音符
+                    {time: 1.5, type: 'm', key: 'D', clicks: 2}, // 连击音符
+                    {time: 2.0, type: 'c', key: 'F'},
+                    {time: 2.5, type: 'h', key: 'A'}, // 变换音符
+                    {time: 3.0, type: 'c', key: 'S'},
+                    {time: 3.5, type: 'h', key: 'D'}, // 变换音符
+                    {time: 4.0, type: 'm', key: 'F', clicks: 2}, // 连击音符
+                ]
+            }
+        };
+        
+        // DOM 元素
+        const elements = {
+            startScreen: document.getElementById('start-screen'),
+            gameScreen: document.getElementById('game-screen'),
+            endScreen: document.getElementById('end-screen'),
+            startButton: document.getElementById('start-button'),
+            pauseButton: document.getElementById('pause-button'),
+            restartButton: document.getElementById('restart-button'),
+            playAgainButton: document.getElementById('play-again-button'),
+            scoreDisplay: document.getElementById('score'),
+            comboDisplay: document.getElementById('combo'),
+            timeDisplay: document.getElementById('time'),
+            finalScoreDisplay: document.getElementById('final-score'),
+            maxComboDisplay: document.getElementById('max-combo'),
+            judgmentContainer: document.getElementById('judgment-inner'),
+            comboContainer: document.getElementById('combo-container'),
+            keyButtons: {
+                a: document.getElementById('key-a'),
+                s: document.getElementById('key-s'),
+                d: document.getElementById('key-d'),
+                f: document.getElementById('key-f')
+            },
+            gameContainer: document.querySelector('.game-container'),
+            songSelect: document.getElementById('song-select'),
+            fileUpload: document.getElementById('file-upload'),
+            currentSongDisplay: document.getElementById('current-song')
+        };
+        
+        // 音效系统
+        const sounds = {
+            context: null,
+            bufferCache: {},
+            
+            init() {
+                try {
+                    window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                    this.context = new AudioContext();
+                    return true;
+                } catch (e) {
+                    console.warn('Web Audio API 不受支持，音效将无法播放');
+                    return false;
+                }
+            },
+            
+            async loadSounds() {
+                if (!this.context) return;
+                
+                const soundSamples = {
+                    perfect: "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQGAAC",
+                    great: "data:audio/wav;base64,UklGRjQGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0Yf8GAAC",
+                    good: "data:audio/wav;base64,UklGRiQGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YdIGAAC",
+                    miss: "data:audio/wav;base64,UklGRkwGAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YSgGAAC",
+                    combo: "data:audio/wav;base64,UklGRlQHAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YT8HAAChYqF",
+                    click: "data:audio/wav;base64,UklGRoQHAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YWgGAAChpqV",
+                    complete: "data:audio/wav;base64,UklGRnwHAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0Yf0GAAChq6l",
+                    fail: "data:audio/wav;base64,UklGRkQHAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YTQGAAChnKZ",
+                    change: "data:audio/wav;base64,UklGRlgHAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0Yf0GAAChq6l"
+                };
+                
+                for (const [name, url] of Object.entries(soundSamples)) {
+                    try {
+                        const response = await fetch(url);
+                        const arrayBuffer = await response.arrayBuffer();
+                        const audioBuffer = await this.context.decodeAudioData(arrayBuffer);
+                        this.bufferCache[name] = audioBuffer;
+                    } catch (e) {
+                        console.error(`无法加载音效 ${name}:`, e);
+                    }
+                }
+            },
+            
+            play(name, volume = 1.0) {
+                if (!this.context || !this.bufferCache[name]) return;
+                
+                if (this.context.state === 'suspended') {
+                    this.context.resume();
+                }
+                
+                const source = this.context.createBufferSource();
+                source.buffer = this.bufferCache[name];
+                
+                const gainNode = this.context.createGain();
+                gainNode.gain.value = volume;
+                
+                source.connect(gainNode);
+                gainNode.connect(this.context.destination);
+                
+                source.start(0);
+            }
+        };
+        
+        // 初始化
+        function init() {
+            // 获取所有轨道元素
+            document.querySelectorAll('.notes-lane').forEach((lane, index) => {
+                gameState.laneElements[index] = lane;
+            });
+            
+            // 初始化音效
+            sounds.init();
+            sounds.loadSounds();
+            
+            // 绑定事件
+            elements.startButton.addEventListener('click', startGame);
+            elements.pauseButton.addEventListener('click', pauseGame);
+            elements.restartButton.addEventListener('click', startGame);
+            elements.playAgainButton.addEventListener('click', startGame);
+            
+            // 歌曲选择事件
+            elements.songSelect.addEventListener('change', (e) => {
+                const songId = e.target.value;
+                gameState.customSongLoaded = false;
+                
+                if (songId === 'random') {
+                    elements.currentSongDisplay.textContent = `当前: 随机生成`;
+                    gameState.currentSong = null;
+                } else if (sampleSongs[songId]) {
+                    elements.currentSongDisplay.textContent = `当前: ${sampleSongs[songId].name}`;
+                    gameState.currentSong = sampleSongs[songId];
+                }
+            });
+            
+            // 文件上传事件
+            elements.fileUpload.addEventListener('change', handleFileUpload);
+            
+            // 键盘控制
+            document.addEventListener('keydown', (e) => {
+                const key = e.key.toLowerCase();
+                if (noteConfig.keys.includes(key)) {
+                    e.preventDefault();
+                    if (!gameState.keyStates[key]) { // 防止重复触发
+                        gameState.keyStates[key] = true;
+                        judgeNote(key, 'down');
+                    }
+                }
+            });
+            
+            document.addEventListener('keyup', (e) => {
+                const key = e.key.toLowerCase();
+                if (noteConfig.keys.includes(key)) {
+                    e.preventDefault();
+                    gameState.keyStates[key] = false;
+                }
+            });
+        }
+        
+        // 处理文件上传
+        function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            // 检查文件类型
+            if (file.type !== 'text/plain' && !file.name.endsWith('.txt')) {
+                alert('请上传txt格式的文件');
+                elements.fileUpload.value = '';
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const content = event.target.result;
+                    const songData = parseMusicFile(content);
+                    
+                    gameState.currentSong = songData;
+                    gameState.customSongLoaded = true;
+                    elements.currentSongDisplay.textContent = `当前: 自定义 - ${songData.name}`;
+                    elements.songSelect.value = 'random'; // 重置选择框
+                    
+                    // 显示成功消息
+                    alert(`成功加载歌曲: ${songData.name}`);
+                } catch (error) {
+                    console.error('解析文件失败:', error);
+                    alert('文件格式不正确，请检查music.txt格式');
+                }
+            };
+            reader.readAsText(file);
+        }
+        
+        // 解析music.txt文件
+        function parseMusicFile(content) {
+            const lines = content.split('\n').map(line => line.trim()).filter(line => line);
+            let songName = '自定义歌曲';
+            const events = [];
+            let maxTime = 0;
+            
+            // 默认长度
+            let duration = 60;
+            
+            for (const line of lines) {
+                // 歌曲信息行
+                if (line.startsWith('ms#')) {
+                    songName = line.substring(3).trim();
+                } 
+                // 普通音符行 c 时间 键
+                else if (line.startsWith('c ')) {
+                    const parts = line.split(/\s+/).filter(p => p);
+                    if (parts.length === 3) {
+                        const time = parseFloat(parts[1]);
+                        const key = parts[2].toLowerCase();
+                        
+                        if (!isNaN(time) && noteConfig.keys.includes(key)) {
+                            events.push({
+                                time: time,
+                                type: 'c',
+                                key: key.toUpperCase()
+                            });
+                            maxTime = Math.max(maxTime, time);
+                        }
+                    }
+                } 
+                // 连击音符行 m 时间 键 点击次数
+                else if (line.startsWith('m ')) {
+                    const parts = line.split(/\s+/).filter(p => p);
+                    if (parts.length >= 4) {
+                        const time = parseFloat(parts[1]);
+                        const key = parts[2].toLowerCase();
+                        const clicks = parseInt(parts[3]);
+                        
+                        // 确保点击次数在有效范围内
+                        const validClicks = Math.min(
+                            Math.max(clicks, noteConfig.multiNote.minClicks), 
+                            noteConfig.multiNote.maxClicks
+                        );
+                        
+                        if (!isNaN(time) && noteConfig.keys.includes(key)) {
+                            events.push({
+                                time: time,
+                                type: 'm',
+                                key: key.toUpperCase(),
+                                clicks: validClicks
+                            });
+                            maxTime = Math.max(maxTime, time + 2);
+                        }
+                    }
+                }
+                // 变换音符行 h 时间 键
+                else if (line.startsWith('h ')) {
+                    const parts = line.split(/\s+/).filter(p => p);
+                    if (parts.length === 3) {
+                        const time = parseFloat(parts[1]);
+                        const key = parts[2].toLowerCase();
+                        
+                        if (!isNaN(time) && noteConfig.keys.includes(key)) {
+                            events.push({
+                                time: time,
+                                type: 'h',
+                                key: key.toUpperCase()
+                            });
+                            maxTime = Math.max(maxTime, time + 2);
+                        }
+                    }
+                }
+            }
+            
+            // 根据最大时间设置歌曲时长，至少30秒
+            duration = Math.max(30, Math.ceil(maxTime) + 5);
+            
+            return {
+                name: songName,
+                duration: duration,
+                events: events.sort((a, b) => a.time - b.time) // 按时间排序
+            };
+        }
+        
+        // 随机选择音符类型（按指定概率）
+        function getRandomNoteType() {
+            const rand = Math.random();
+            let cumulative = 0;
+            
+            // 按用户指定概率分布：normal 95%，multi 5%，change 0%
+            const probabilities = [
+                {type: 'normal', prob: 0.95},
+                {type: 'multi', prob: 0.05},
+                {type: 'change', prob: 0.00}
+            ];
+            
+            for (const {type, prob} of probabilities) {
+                cumulative += prob;
+                if (rand < cumulative) {
+                    return type;
+                }
+            }
+            
+            return 'normal'; // 默认
+        }
+        
+        // 创建随机音符
+        function createRandomNote() {
+            if (!gameState.isPlaying || gameState.isPaused) return;
+            
+            const noteType = getRandomNoteType();
+            const noteId = `note-${gameState.noteId++}`;
+            
+            switch (noteType) {
+                case 'normal':
+                    createNormalNote(noteId);
+                    break;
+                case 'multi':
+                    // 随机生成点击次数
+                    const clicks = noteConfig.multiNote.minClicks + 
+                                  Math.floor(Math.random() * (noteConfig.multiNote.maxClicks - noteConfig.multiNote.minClicks + 1));
+                    createMultiNote(noteId, null, null, clicks);
+                    break;
+                case 'change':
+                    createChangeNote(noteId);
+                    break;
+            }
+            
+            // 安排下一个音符
+            scheduleNextRandomNote();
+        }
+        
+        // 从歌曲事件创建音符
+        function createNoteFromEvent(event) {
+            if (!gameState.isPlaying || gameState.isPaused || gameState.currentSong) return;
+            
+            const noteId = `note-${gameState.noteId++}`;
+            
+            switch (event.type) {
+                case 'c': // 普通音符
+                    createNormalNote(noteId, event.key);
+                    break;
+                case 'm': // 连击音符
+                    createMultiNote(noteId, event.key, null, event.clicks);
+                    break;
+                case 'h': // 变换音符
+                    createChangeNote(noteId, event.key);
+                    break;
+            }
+        }
+        
+        // 创建普通音符
+        function createNormalNote(noteId, key = null) {
+            // 如果指定了键则使用，否则随机选择
+            let lane;
+            if (key) {
+                const keyLower = key.toLowerCase();
+                lane = noteConfig.keys.indexOf(keyLower);
+                if (lane === -1) {
+                    lane = Math.floor(Math.random() * noteConfig.lanes);
+                }
+            } else {
+                lane = Math.floor(Math.random() * noteConfig.lanes);
+            }
+            
+            // 创建音符元素
+            const note = document.createElement('div');
+            note.id = noteId;
+            note.className = `note ${noteConfig.colors[lane]}`;
+            note.style.top = '-56px'; // 调整起始位置
+            note.dataset.lane = lane;
+            note.dataset.key = noteConfig.keys[lane];
+            note.textContent = noteConfig.keys[lane].toUpperCase();
+            
+            // 将音符添加到对应轨道
+            gameState.laneElements[lane].appendChild(note);
+            
+            // 记录音符信息
+            gameState.notes.push({
+                id: noteId,
+                element: note,
+                lane: lane,
+                key: noteConfig.keys[lane],
+                y: -56, // 初始Y位置
+                hit: false,
+                spawnTime: gameState.time // 生成时间（用于调试）
+            });
+        }
+        
+        // 创建连击音符
+        function createMultiNote(noteId, key = null, length = null, clicks = null) {
+            // 如果指定了键则使用，否则随机选择
+            let lane;
+            if (key) {
+                const keyLower = key.toLowerCase();
+                lane = noteConfig.keys.indexOf(keyLower);
+                if (lane === -1) {
+                    lane = Math.floor(Math.random() * noteConfig.lanes);
+                }
+            } else {
+                lane = Math.floor(Math.random() * noteConfig.lanes);
+            }
+            
+            // 如果指定了长度则使用，否则随机生成
+            const noteLength = length || 
+                             (noteConfig.multiNote.minLength + 
+                             Math.random() * (noteConfig.multiNote.maxLength - noteConfig.multiNote.minLength));
+            
+            // 如果指定了点击次数则使用，否则随机生成
+            const requiredClicks = clicks || 
+                                 (noteConfig.multiNote.minClicks + 
+                                 Math.floor(Math.random() * (noteConfig.multiNote.maxClicks - noteConfig.multiNote.minClicks + 1)));
+            
+            // 创建连击音符容器
+            const multiContainer = document.createElement('div');
+            multiContainer.id = noteId;
+            multiContainer.className = 'multi-note-container';
+            multiContainer.style.top = `-${noteLength}px`; // 从顶部外开始
+            multiContainer.dataset.lane = lane;
+            multiContainer.dataset.key = noteConfig.keys[lane];
+            
+            // 创建连击音符头部
+            const multiHead = document.createElement('div');
+            multiHead.className = 'multi-note-head';
+            
+            // 显示按键和连击次数
+            const keyText = document.createElement('span');
+            keyText.textContent = noteConfig.keys[lane].toUpperCase();
+            
+            const clickText = document.createElement('span');
+            clickText.textContent = `X${requiredClicks}`;
+            clickText.className = 'text-xs mt-1';
+            
+            multiHead.appendChild(keyText);
+            multiHead.appendChild(clickText);
+            
+            // 创建当前点击计数显示
+            const countDisplay = document.createElement('div');
+            countDisplay.className = 'click-count';
+            countDisplay.textContent = '0';
+            multiHead.appendChild(countDisplay);
+            
+            // 创建连击音符身体（区间部分）
+            const multiBody = document.createElement('div');
+            multiBody.className = 'multi-note-body';
+            multiBody.style.height = `${noteLength - 56}px`; // 减去头部高度
+            multiBody.textContent = `点击 ${requiredClicks} 次`;
+            
+            // 组合连击音符
+            multiContainer.appendChild(multiHead);
+            multiContainer.appendChild(multiBody);
+            
+            // 将音符添加到对应轨道
+            gameState.laneElements[lane].appendChild(multiContainer);
+            
+            // 记录连击音符信息
+            gameState.multiNotes.push({
+                id: noteId,
+                element: multiContainer,
+                head: multiHead,
+                body: multiBody,
+                countDisplay: countDisplay,
+                lane: lane,
+                originalLane: lane, // 初始轨道
+                key: noteConfig.keys[lane],
+                y: -noteLength, // 初始Y位置
+                length: noteLength,
+                requiredClicks: requiredClicks,
+                currentClicks: 0,
+                inRange: false,  // 是否进入判定区间
+                completed: false, // 是否完成所有点击
+                failed: false,    // 是否失败
+                spawnTime: gameState.time // 生成时间
+            });
+        }
+        
+        // 创建变换轨道音符
+        function createChangeNote(noteId, key = null) {
+            // 如果指定了键则使用，否则随机选择初始轨道
+            let initialLane;
+            if (key) {
+                const keyLower = key.toLowerCase();
+                initialLane = noteConfig.keys.indexOf(keyLower);
+                if (initialLane === -1) {
+                    initialLane = Math.floor(Math.random() * noteConfig.lanes);
+                }
+            } else {
+                initialLane = Math.floor(Math.random() * noteConfig.lanes);
+            }
+            
+            // 随机选择目标轨道（不能是初始轨道）
+            let targetLanes = [];
+            for (let i = 0; i < noteConfig.lanes; i++) {
+                if (i !== initialLane) targetLanes.push(i);
+            }
+            const targetLane = targetLanes[Math.floor(Math.random() * targetLanes.length)];
+            
+            // 随机生成变换时间
+            const changeTime = gameState.time + 
+                             noteConfig.changeNote.minChangeTime + 
+                             Math.random() * (noteConfig.changeNote.maxChangeTime - noteConfig.changeNote.minChangeTime);
+            
+            // 创建变换音符元素
+            const changeNote = document.createElement('div');
+            changeNote.id = noteId;
+            changeNote.className = `change-note ${noteConfig.changeColor}`;
+            changeNote.style.top = '-56px'; // 初始位置
+            changeNote.dataset.lane = initialLane;
+            changeNote.dataset.key = noteConfig.keys[initialLane];
+            changeNote.textContent = noteConfig.keys[initialLane].toUpperCase();
+            
+            // 添加变换提示符号
+            const changeIcon = document.createElement('span');
+            changeIcon.className = 'text-xs absolute -top-4 left-1/2 transform -translate-x-1/2';
+            changeIcon.innerHTML = '<i class="fa fa-exchange"></i>';
+            changeNote.appendChild(changeIcon);
+            
+            // 将音符添加到初始轨道
+            gameState.laneElements[initialLane].appendChild(changeNote);
+            
+            // 记录变换音符信息
+            gameState.changeNotes.push({
+                id: noteId,
+                element: changeNote,
+                lane: initialLane, // 当前轨道
+                originalLane: initialLane, // 初始轨道
+                targetLane: targetLane, // 目标轨道
+                key: noteConfig.keys[initialLane], // 初始按键
+                targetKey: noteConfig.keys[targetLane], // 目标按键
+                y: -56, // 初始Y位置
+                hit: false,
+                changed: false, // 是否已经变换轨道
+                changeTime: changeTime, // 计划变换时间
+                spawnTime: gameState.time // 生成时间
+            });
+        }
+        
+        // 安排下一个随机音符
+        function scheduleNextRandomNote() {
+            if (!gameState.isPlaying || gameState.isPaused || gameState.currentSong) return;
+            
+            clearTimeout(gameState.spawnTimer);
+            
+            // 根据游戏进度调整间隔范围
+            let difficultyFactor = 1 - (gameState.time / gameState.gameDuration);
+            difficultyFactor = Math.max(0.3, difficultyFactor);
+            
+            // 计算变化的间隔时间
+            const minInterval = gameState.minSpawnInterval * difficultyFactor;
+            const maxInterval = gameState.maxSpawnInterval * difficultyFactor;
+            
+            // 增加同时出现音符的概率
+            const isConsecutive = Math.random() < 0.3; // 30%概率连续出现
+            const baseInterval = minInterval + Math.random() * (maxInterval - minInterval);
+            const finalInterval = isConsecutive ? Math.max(minInterval, baseInterval * 0.3) : baseInterval;
+            
+            gameState.spawnTimer = setTimeout(() => {
+                // 随机生成1-2个同时出现的音符（降低密度，因为有了change音符）
+                const notesAtOnce = 1 + Math.floor(Math.random() * 2);
+                const usedLanes = new Set();
+                
+                for (let i = 0; i < notesAtOnce; i++) {
+                    let lane;
+                    do {
+                        lane = Math.floor(Math.random() * noteConfig.lanes);
+                    } while (usedLanes.has(lane));
+                    
+                    usedLanes.add(lane);
+                    setTimeout(createRandomNote, i * 50);
+                }
+            }, finalInterval);
+        }
+        
+        // 处理歌曲事件
+        function processSongEvents() {
+            if (!gameState.isPlaying || gameState.isPaused || !gameState.currentSong) return;
+            
+            // 处理当前时间点的所有事件
+            while (gameState.eventIndex < gameState.currentSong.events.length) {
+                const event = gameState.currentSong.events[gameState.eventIndex];
+                if (event.time <= gameState.time) {
+                    createNoteFromEvent(event);
+                    gameState.eventIndex++;
+                } else {
+                    break;
+                }
+            }
+            
+            // 如果还有事件未处理，设置下次检查
+            if (gameState.eventIndex < gameState.currentSong.events.length) {
+                const nextEvent = gameState.currentSong.events[gameState.eventIndex];
+                const delay = Math.max(0, (nextEvent.time - gameState.time) * 1000);
+                
+                clearTimeout(gameState.spawnTimer);
+                gameState.spawnTimer = setTimeout(processSongEvents, delay);
+            }
+        }
+        
+        // 更新所有音符位置
+        function updateNotes() {
+            if (!gameState.isPlaying || gameState.isPaused) return;
+            
+            const containerHeight = elements.gameContainer.offsetHeight;
+            const judgeLineY = containerHeight * 0.8; // 判定线位置
+            
+            // 随时间增加速度
+            adjustSpeed();
+            
+            // 更新普通音符
+            updateNormalNotes(judgeLineY);
+            
+            // 更新连击音符
+            updateMultiNotes(judgeLineY);
+            
+            // 更新变换轨道音符
+            updateChangeNotes(judgeLineY);
+        }
+        
+        // 更新普通音符
+        function updateNormalNotes(judgeLineY) {
+            const normalNoteHeight = 56; // 普通音符高度
+            
+            for (let i = gameState.notes.length - 1; i >= 0; i--) {
+                const note = gameState.notes[i];
+                
+                if (!note.hit) {
+                    // 移动音符
+                    note.y += gameState.currentSpeed;
+                    note.element.style.top = `${note.y}px`;
+                    
+                    // 检查是否错过判定
+                    if (note.y > judgeLineY + normalNoteHeight/2 + noteConfig.judgeOffset) {
+                        note.hit = true;
+                        showJudgment(3, note.lane); // MISS
+                        sounds.play('miss');
+                        gameState.combo = 0;
+                        updateComboDisplay();
+                        removeNote(note.id, 'normal');
+                    }
+                }
+            }
+        }
+        
+        // 更新连击音符（修正判定区间）
+        function updateMultiNotes(judgeLineY) {
+            const noteHeadHeight = 56; // 头部高度
+            const effectiveRange = noteConfig.multiJudgeRange; // 有效判定区间（上下各100px）
+            const rangeTop = judgeLineY - effectiveRange; // 判定区间顶部
+            const rangeBottom = judgeLineY + effectiveRange; // 判定区间底部
+            
+            for (let i = gameState.multiNotes.length - 1; i >= 0; i--) {
+                const note = gameState.multiNotes[i];
+                
+                if (note.completed || note.failed) continue;
+                
+                // 移动连击音符
+                note.y += gameState.currentSpeed;
+                note.element.style.top = `${note.y}px`;
+                
+                // 计算头部位置（用于判定区间）
+                const headBottomY = note.y + noteHeadHeight; // 头部底部位置
+                
+                // 检查是否进入判定区间（头部进入区间顶部）
+                if (!note.inRange && headBottomY >= rangeTop) {
+                    note.inRange = true;
+                    note.head.classList.add('multi-active');
+                }
+                
+                // 检查是否离开判定区间（头部离开区间底部）
+                if (note.inRange && !note.completed && !note.failed) {
+                    if (note.y > rangeBottom) {
+                        // 检查是否完成了足够的点击
+                        if (note.currentClicks >= note.requiredClicks) {
+                            // 完成连击
+                            note.completed = true;
+                            showJudgment(5, note.lane); // 完成连击
+                            sounds.play('complete');
+                            
+                            // 根据完成度加分
+                            const bonus = Math.floor((note.currentClicks / note.requiredClicks) * noteConfig.judgeScores[5]);
+                            gameState.score += bonus;
+                            gameState.combo += 1;
+                            updateMaxCombo();
+                        } else {
+                            // 未完成足够点击，判定失败
+                            note.failed = true;
+                            showJudgment(6, note.lane); // 连击失败
+                            sounds.play('fail');
+                            
+                            // 失败扣分
+                            gameState.score += noteConfig.judgeScores[6];
+                            gameState.combo = 0;
+                        }
+                        
+                        updateScoreDisplay();
+                        updateComboDisplay();
+                        removeNote(note.id, 'multi');
+                    }
+                }
+                
+                // 完全错过连击音符（超出范围底部过多）
+                if (note.y > rangeBottom + noteConfig.judgeOffset * 2) {
+                    if (!note.completed && !note.failed) {
+                        note.failed = true;
+                        showJudgment(3, note.lane); // MISS
+                        sounds.play('miss');
+                        gameState.combo = 0;
+                        updateComboDisplay();
+                    }
+                    removeNote(note.id, 'multi');
+                }
+            }
+        }
+        
+        // 更新变换轨道音符
+        function updateChangeNotes(judgeLineY) {
+            const noteHeight = 56; // 音符高度
+            const judgeRange = noteConfig.judgeOffset * 2; // 判定范围
+            
+            for (let i = gameState.changeNotes.length - 1; i >= 0; i--) {
+                const note = gameState.changeNotes[i];
+                
+                if (note.hit) continue;
+                
+                // 移动音符
+                note.y += gameState.currentSpeed;
+                note.element.style.top = `${note.y}px`;
+                
+                // 检查是否到达变换时间且尚未变换
+                if (!note.changed && gameState.time >= note.changeTime) {
+                    // 执行轨道变换
+                    performTrackChange(note);
+                }
+                
+                // 检查是否错过判定
+                if (note.y > judgeLineY + noteHeight/2 + noteConfig.judgeOffset) {
+                    note.hit = true;
+                    showJudgment(3, note.lane); // MISS
+                    sounds.play('miss');
+                    gameState.combo = 0;
+                    updateComboDisplay();
+                    removeNote(note.id, 'change');
+                }
+            }
+        }
+        
+        // 执行轨道变换
+        function performTrackChange(note) {
+            if (note.changed) return;
+            
+            // 记录原轨道和目标轨道
+            const originalLane = note.lane;
+            const targetLane = note.targetLane;
+            
+            // 更新音符数据
+            note.lane = targetLane;
+            note.key = note.targetKey;
+            note.changed = true;
+            
+            // 更新DOM元素属性
+            note.element.dataset.lane = targetLane;
+            note.element.dataset.key = note.targetKey;
+            note.element.textContent = note.targetKey.toUpperCase();
+            
+            // 添加变换动画
+            note.element.classList.add('change-animation');
+            
+            // 将音符移动到目标轨道
+            const targetLaneElement = gameState.laneElements[targetLane];
+            targetLaneElement.appendChild(note.element);
+            
+            // 播放变换音效
+            sounds.play('change');
+            
+            // 显示变换提示
+            showJudgment(7, originalLane); // 显示在原轨道
+            setTimeout(() => {
+                showJudgment(7, targetLane); // 显示在目标轨道
+            }, 200);
+            
+            // 1秒后移除动画类
+            setTimeout(() => {
+                note.element.classList.remove('change-animation');
+            }, 300);
+        }
+        
+        // 调整速度
+        function adjustSpeed() {
+            // 随时间逐渐增加速度
+	        const speedFactor = 1 + (gameState.time / gameState.gameDuration) * 1.5;
+            gameState.currentSpeed = gameState.baseSpeed * speedFactor;
+        }
+        
+        // 判定音符
+        function judgeNote(key, action) {
+            if (!gameState.isPlaying || gameState.isPaused) return;
+            
+            // 找到对应轨道
+            const laneIndex = noteConfig.keys.indexOf(key);
+            if (laneIndex === -1) return;
+            
+            // 按键动画反馈
+            if (elements.keyButtons[key]) {
+                elements.keyButtons[key].classList.add('key-press');
+                setTimeout(() => {
+                    elements.keyButtons[key].classList.remove('key-press');
+                }, 150);
+            }
+            
+            const containerHeight = elements.gameContainer.offsetHeight;
+            const judgeLineY = containerHeight * 0.8;
+            const noteHeight = 56; // 普通音符高度
+            const effectiveRange = noteConfig.multiJudgeRange; // 有效判定范围
+            const rangeTop = judgeLineY - effectiveRange;
+            const rangeBottom = judgeLineY + effectiveRange;
+            
+            // 处理按下时的判定
+            if (action === 'down') {
+                // 1. 处理普通音符判定
+                let closestNote = null;
+                let minDistance = Infinity;
+                
+                gameState.notes.forEach(note => {
+                    if (!note.hit && note.lane === laneIndex) {
+                        const distance = Math.abs(note.y + noteHeight/2 - judgeLineY);
+                        if (distance < minDistance && distance < noteConfig.judgeOffset * 2) {
+                            minDistance = distance;
+                            closestNote = note;
+                        }
+                    }
+                });
+                
+                // 普通音符判定结果
+                if (closestNote) {
+                    closestNote.hit = true;
+                    
+                    let judgment;
+                    if (minDistance < noteConfig.judgeOffset * 0.3) {
+                        judgment = 0; // PERFECT
+                        sounds.play('perfect');
+                    } else if (minDistance < noteConfig.judgeOffset * 0.6) {
+                        judgment = 1; // GREAT
+                        sounds.play('great');
+                    } else {
+                        judgment = 2; // GOOD
+                        sounds.play('good');
+                    }
+                    
+                    showJudgment(judgment, closestNote.lane);
+                    gameState.score += noteConfig.judgeScores[judgment];
+                    gameState.combo += 1;
+                    updateMaxCombo();
+                    updateScoreDisplay();
+                    updateComboDisplay();
+                    removeNote(closestNote.id, 'normal');
+                }
+                
+                // 2. 处理连击音符的点击判定（仅在有效区间内）
+                gameState.multiNotes.forEach(note => {
+                    if (!note.completed && !note.failed && note.inRange && note.lane === laneIndex) {
+                        // 确保在有效判定区间内
+                        const headY = note.y;
+                        const headBottomY = note.y + 56;
+                        
+                        if (headBottomY >= rangeTop && headY <= rangeBottom) {
+                            if (note.currentClicks < note.requiredClicks) {
+                                note.currentClicks++;
+                                
+                                // 更新显示的点击次数
+                                note.countDisplay.textContent = note.currentClicks;
+                                
+                                // 播放点击音效
+                                sounds.play('click', 0.7);
+                                
+                                // 每次点击都给予一定分数
+                                gameState.score += noteConfig.judgeScores[4];
+                                updateScoreDisplay();
+                                
+                                // 视觉反馈
+                                note.head.classList.add('multi-active');
+                                setTimeout(() => {
+                                    note.head.classList.remove('multi-active');
+                                }, 100);
+                                
+                                // 检查是否已经完成所需点击次数
+                                if (note.currentClicks >= note.requiredClicks) {
+                                    // 提前完成，给予额外奖励
+                                    const bonus = Math.floor(noteConfig.judgeScores[5] * 0.2);
+                                    gameState.score += bonus;
+                                    updateScoreDisplay();
+                                    
+                                    // 显示完成信息
+                                    showJudgment(5, note.lane); // 完成连击
+                                    sounds.play('complete');
+                                    
+                                    gameState.combo += 1;
+                                    updateMaxCombo();
+                                    updateComboDisplay();
+                                    
+                                    note.completed = true;
+                                    removeNote(note.id, 'multi');
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // 3. 处理变换音符的判定
+                gameState.changeNotes.forEach(note => {
+                    if (!note.hit && note.lane === laneIndex) {
+                        const distance = Math.abs(note.y + noteHeight/2 - judgeLineY);
+                        if (distance < noteConfig.judgeOffset * 2) {
+                            note.hit = true;
+                            
+                            let judgment;
+                            if (distance < noteConfig.judgeOffset * 0.3) {
+                                judgment = 0; // PERFECT
+                                sounds.play('perfect');
+                            } else if (distance < noteConfig.judgeOffset * 0.6) {
+                                judgment = 1; // GREAT
+                                sounds.play('great');
+                            } else {
+                                judgment = 2; // GOOD
+                                sounds.play('good');
+                            }
+                            
+                            showJudgment(judgment, note.lane);
+                            gameState.score += noteConfig.judgeScores[judgment];
+                            gameState.combo += 1;
+                            updateMaxCombo();
+                            updateScoreDisplay();
+                            updateComboDisplay();
+                            removeNote(note.id, 'change');
+                        }
+                    }
+                });
+            }
+        }
+        
+        // 更新最大连击
+        function updateMaxCombo() {
+            if (gameState.combo > gameState.maxCombo) {
+                gameState.maxCombo = gameState.combo;
+                
+                // 连击音效
+                if (gameState.combo % 10 === 0 && gameState.combo > 0) {
+                    sounds.play('combo');
+                    showCombo(gameState.combo);
+                }
+            }
+        }
+        
+        // 显示判定结果
+        function showJudgment(type, lane) {
+            const judgment = document.createElement('div');
+            judgment.className = `judgment text-xl font-bold ${noteConfig.judgeColors[type]} absolute`;
+            judgment.textContent = noteConfig.judgeTexts[type];
+            
+            // 精确计算在对应轨道上的位置
+            const laneWidth = 100 / noteConfig.lanes;
+            const leftPosition = (lane * laneWidth) + (laneWidth / 2);
+            
+            // 使用transform定位，避免溢出
+            judgment.style.left = `${leftPosition}%`;
+            judgment.style.transform = 'translateX(-50%)';
+            judgment.style.top = '0';
+            
+            elements.judgmentContainer.appendChild(judgment);
+            
+            // 自动移除
+            setTimeout(() => {
+                judgment.remove();
+            }, 1000);
+        }
+        
+        // 显示连击
+        function showCombo(combo) {
+            const comboElement = document.createElement('div');
+            comboElement.className = 'combo-animation text-3xl font-bold text-yellow-400';
+            comboElement.textContent = `${combo} COMBO!`;
+            
+            elements.comboContainer.appendChild(comboElement);
+            
+            // 自动移除
+            setTimeout(() => {
+                comboElement.remove();
+            }, 500);
+        }
+        
+        // 移除音符
+        function removeNote(noteId, type) {
+            switch (type) {
+                case 'change':
+                    const changeIndex = gameState.changeNotes.findIndex(n => n.id === noteId);
+                    if (changeIndex !== -1) {
+                        const note = gameState.changeNotes[changeIndex];
+                        note.element.style.opacity = '0';
+                        note.element.style.transform = 'scale(0.8)';
+                        setTimeout(() => {
+                            note.element.remove();
+                        }, 300);
+                        gameState.changeNotes.splice(changeIndex, 1);
+                    }
+                    break;
+                case 'multi':
+                    const multiIndex = gameState.multiNotes.findIndex(n => n.id === noteId);
+                    if (multiIndex !== -1) {
+                        const note = gameState.multiNotes[multiIndex];
+                        note.element.style.opacity = '0';
+                        setTimeout(() => {
+                            note.element.remove();
+                        }, 300);
+                        gameState.multiNotes.splice(multiIndex, 1);
+                    }
+                    break;
+                case 'normal':
+                default:
+                    const normalIndex = gameState.notes.findIndex(n => n.id === noteId);
+                    if (normalIndex !== -1) {
+                        const note = gameState.notes[normalIndex];
+                        note.element.style.opacity = '0';
+                        note.element.style.transform = 'scale(0.8)';
+                        setTimeout(() => {
+                            note.element.remove();
+                        }, 300);
+                        gameState.notes.splice(normalIndex, 1);
+                    }
+            }
+        }
+        
+        // 更新分数显示
+        function updateScoreDisplay() {
+            elements.scoreDisplay.textContent = Math.floor(gameState.score);
+        }
+        
+        // 更新连击显示
+        function updateComboDisplay() {
+            elements.comboDisplay.textContent = gameState.combo;
+        }
+        
+        // 开始游戏
+        function startGame() {
+            // 重置游戏状态
+            resetGameState();
+            
+            // 设置游戏时长
+            if (gameState.currentSong) {
+                gameState.gameDuration = gameState.currentSong.duration;
+            } else {
+                gameState.gameDuration = 60; // 默认60秒
+            }
+            
+            // 切换界面
+            elements.startScreen.classList.add('hidden');
+            elements.gameScreen.classList.remove('hidden');
+            elements.endScreen.classList.add('hidden');
+            
+            // 开始游戏
+            gameState.isPlaying = true;
+            
+            // 根据模式生成音符
+            if (gameState.currentSong) {
+                // 歌曲模式
+                processSongEvents();
+            } else {
+                // 随机模式 - 初始生成1-2个音符
+                const initialNotes = 1 + Math.floor(Math.random() * 2);
+                const usedLanes = new Set();
+                
+                for (let i = 0; i < initialNotes; i++) {
+                    let lane;
+                    do {
+                        lane = Math.floor(Math.random() * noteConfig.lanes);
+                    } while (usedLanes.has(lane));
+                    
+                    usedLanes.add(lane);
+                    setTimeout(createRandomNote, i * 50);
+                }
+            }
+            
+            // 游戏主循环
+            function gameLoop() {
+                if (gameState.isPlaying && !gameState.isPaused) {
+                    // 更新游戏状态
+                    updateNotes();
+                    
+                    // 检查游戏是否结束
+                    if (gameState.time >= gameState.gameDuration) {
+                        endGame();
+                        return;
+                    }
+                }
+                
+                requestAnimationFrame(gameLoop);
+            }
+            
+            requestAnimationFrame(gameLoop);
+            
+            // 计时
+            gameState.timer = setInterval(() => {
+                if (gameState.isPlaying && !gameState.isPaused) {
+                    gameState.time++;
+                    elements.timeDisplay.textContent = gameState.time;
+                    
+                    // 对于歌曲模式，每个整秒检查一次事件
+                    if (gameState.currentSong && gameState.time % 1 === 0) {
+                        processSongEvents();
+                    }
+                }
+            }, 1000);
+        }
+        
+        // 暂停游戏
+        function pauseGame() {
+            if (!gameState.isPlaying) return;
+            
+            gameState.isPaused = !gameState.isPaused;
+            elements.pauseButton.innerHTML = gameState.isPaused 
+                ? '<i class="fa fa-play mr-1"></i> 继续' 
+                : '<i class="fa fa-pause mr-1"></i> 暂停';
+                
+            // 暂停时控制音效
+            if (gameState.isPaused && sounds.context) {
+                sounds.context.suspend();
+            } else if (sounds.context) {
+                sounds.context.resume();
+            }
+        }
+        
+        // 结束游戏
+        function endGame() {
+            gameState.isPlaying = false;
+            
+            // 清除定时器
+            clearInterval(gameState.timer);
+            clearTimeout(gameState.spawnTimer);
+            
+            // 显示结束界面
+            elements.finalScoreDisplay.textContent = Math.floor(gameState.score);
+            elements.maxComboDisplay.textContent = gameState.maxCombo;
+            elements.gameScreen.classList.add('hidden');
+            elements.endScreen.classList.remove('hidden');
+        }
+        
+        // 重置游戏状态
+        function resetGameState() {
+            gameState.isPlaying = false;
+            gameState.isPaused = false;
+            gameState.score = 0;
+            gameState.combo = 0;
+            gameState.maxCombo = 0;
+            gameState.time = 0;
+            gameState.currentSpeed = gameState.baseSpeed;
+            gameState.notes = [];
+            gameState.multiNotes = [];
+            gameState.changeNotes = [];
+            gameState.noteId = 0;
+            gameState.eventIndex = 0;
+            gameState.keyStates = {a: false, s: false, d: false, f: false};
+            
+            // 清除所有音符
+            document.querySelectorAll('.note, .multi-note-container, .change-note').forEach(note => note.remove());
+            elements.judgmentContainer.innerHTML = '';
+            elements.comboContainer.innerHTML = '';
+            
+            // 重置显示
+            elements.scoreDisplay.textContent = '0';
+            elements.comboDisplay.textContent = '0';
+            elements.timeDisplay.textContent = '0';
+            elements.pauseButton.innerHTML = '<i class="fa fa-pause mr-1"></i> 暂停';
+            
+            // 清除定时器
+            clearInterval(gameState.timer);
+            clearTimeout(gameState.spawnTimer);
+        }
+        
+        // 初始化游戏
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>

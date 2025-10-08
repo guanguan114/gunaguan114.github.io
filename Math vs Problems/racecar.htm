@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>数学防御战</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#4CAF50',
+                        secondary: '#8BC34A',
+                        accent: '#FFC107',
+                        danger: '#F44336',
+                        ground: '#8D6E63',
+                        path: '#A1887F',
+                        grid: '#D7CCC8',
+                        panel: '#EFEBE9',
+                    },
+                    fontFamily: {
+                        game: ['"Comic Sans MS"', '"Marker Felt"', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .grid-cell {
+                @apply border border-grid w-16 h-16 md:w-20 md:h-20 flex items-center justify-center transition-all duration-200;
+            }
+            .plant-btn {
+                @apply w-12 h-12 md:w-14 md:h-14 rounded-lg flex items-center justify-center text-xl font-bold cursor-pointer transition-all duration-200 hover:scale-110 active:scale-95 shadow-md;
+            }
+            .bullet {
+                @apply absolute w-6 h-6 bg-accent rounded-full flex items-center justify-center text-black text-xs font-bold transition-all duration-100 z-10;
+            }
+            .monster {
+                @apply absolute w-10 h-10 bg-danger rounded-full flex items-center justify-center text-white font-bold transition-all duration-200 z-10;
+            }
+            .planted-item {
+                @apply w-full h-full flex flex-col items-center justify-center text-2xl font-bold transition-all duration-300;
+            }
+            .operator-param {
+                @apply text-xs -mt-1;
+            }
+            .remove-indicator {
+                @apply absolute w-4 h-4 bg-danger rounded-full text-white text-xs flex items-center justify-center opacity-0 transition-opacity duration-200;
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-100 font-game min-h-screen">
+    <div class="container mx-auto px-4 py-6 max-w-6xl">
+        <!-- 游戏标题 -->
+        <header class="text-center mb-6">
+            <h1 class="text-[clamp(2rem,5vw,3rem)] font-bold text-primary drop-shadow-lg">数学防御战</h1>
+            <p class="text-gray-600 mt-2">种植运算符号，消灭来袭的数字怪物！右键点击可铲除植物</p>
+        </header>
+
+        <!-- 游戏状态 -->
+        <div class="flex justify-between items-center bg-white rounded-xl shadow-md p-4 mb-6">
+            <div class="flex items-center gap-4">
+                <div class="flex items-center">
+                    <i class="fa fa-heart text-danger text-2xl mr-2"></i>
+                    <span class="text-xl font-bold" id="lives">5</span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fa fa-star text-accent text-2xl mr-2"></i>
+                    <span class="text-xl font-bold" id="score">0</span>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button id="startBtn" class="bg-primary hover:bg-primary/80 text-white px-6 py-2 rounded-lg transition-all duration-200 flex items-center">
+                    <i class="fa fa-play mr-2"></i>开始游戏
+                </button>
+                <button id="resetBtn" class="bg-gray-600 hover:bg-gray-500 text-white px-6 py-2 rounded-lg transition-all duration-200 flex items-center">
+                    <i class="fa fa-refresh mr-2"></i>重置
+                </button>
+            </div>
+        </div>
+
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- 游戏主区域 -->
+            <div class="relative bg-ground rounded-xl shadow-lg p-4 flex-1 overflow-hidden">
+                <div id="gameGrid" class="grid grid-cols-9 grid-rows-5 gap-1 relative">
+                    <!-- 网格将通过JS动态生成 -->
+                </div>
+            </div>
+
+            <!-- 侧边栏：植物选择和说明 -->
+            <div class="w-full lg:w-64 bg-panel rounded-xl shadow-lg p-4">
+                <h2 class="text-xl font-bold text-center mb-4 text-primary">可种植元素</h2>
+                
+                <div class="space-y-4">
+                    <!-- 发射器 -->
+                    <div>
+                        <div class="plant-btn bg-secondary text-white" data-type="shooter" id="shooterBtn">
+                            O
+                        </div>
+                        <p class="text-sm text-center mt-1">发射器：每秒发射值为1的子弹</p>
+                    </div>
+                    
+                    <!-- 运算符 -->
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="plant-btn bg-blue-500 text-white" data-type="operator" data-op="+">
+                            +
+                        </div>
+                        <div class="plant-btn bg-blue-500 text-white" data-type="operator" data-op="-">
+                            -
+                        </div>
+                        <div class="plant-btn bg-blue-500 text-white" data-type="operator" data-op="*">
+                            ×
+                        </div>
+                        <div class="plant-btn bg-blue-500 text-white" data-type="operator" data-op="/">
+                            ÷
+                        </div>
+                        <div class="plant-btn bg-blue-500 text-white" data-type="operator" data-op="abs">
+                            abs
+                        </div>
+                    </div>
+                    <p class="text-sm text-center">运算符：点击可改变参数(1-5)</p>
+                    
+                    <!-- 方向控制器 -->
+                    <div class="flex justify-center">
+                        <div class="grid grid-cols-3 gap-1">
+                            <div></div>
+                            <div class="plant-btn bg-purple-500 text-white" data-type="direction" data-dir="^">
+                                ↑
+                            </div>
+                            <div></div>
+                            <div class="plant-btn bg-purple-500 text-white" data-type="direction" data-dir="<">
+                                ←
+                            </div>
+                            <div class="plant-btn bg-purple-500 text-white" data-type="direction" data-dir=">">
+                                →
+                            </div>
+                            <div class="plant-btn bg-purple-500 text-white" data-type="direction" data-dir="v">
+                                ↓
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-sm text-center">方向控制器：改变子弹方向</p>
+                </div>
+                
+                <div class="mt-6 pt-4 border-t border-gray-300">
+                    <h3 class="text-lg font-bold mb-2 text-center">游戏说明</h3>
+                    <ul class="text-sm space-y-1">
+                        <li>• 怪物从右侧出现，带有随机数值</li>
+                        <li>• 子弹可经过多个运算符累积计算</li>
+                        <li>• 例如：3 + (-2) = 1，再+(-1)=0</li>
+                        <li>• 运算结果为0时，怪物被消灭</li>
+                        <li>• 右键点击可铲除已种植的植物</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- 游戏结束弹窗 -->
+        <div id="gameOverModal" class="fixed inset-0 bg-black/70 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-xl p-8 max-w-md w-full text-center">
+                <h2 class="text-3xl font-bold text-danger mb-4">游戏结束</h2>
+                <p class="text-xl mb-2">你的得分: <span id="finalScore" class="font-bold">0</span></p>
+                <button id="playAgainBtn" class="bg-primary hover:bg-primary/80 text-white px-6 py-3 rounded-lg transition-all duration-200 mt-4">
+                    再玩一次
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 游戏配置
+        const config = {
+            rows: 5,
+            cols: 9,
+            initialLives: 5,
+            shooterInterval: 1000,
+            bulletSpeed: 100,
+            monsterSpeed: 1500,
+            initialMonsterSpawnInterval: 5000,
+            monsterSpawnRateDecrement: 100,
+            monsterValueRange: [1, 5],
+            maxMonsterValue: 10,
+            valueIncreaseRate: 0.1
+        };
+
+        // 游戏状态
+        const gameState = {
+            grid: [],
+            selectedPlant: null,
+            isPlaying: false,
+            score: 0,
+            lives: config.initialLives,
+            shooters: [],
+            bullets: [],
+            monsters: [],
+            monsterCount: 0,
+            currentMonsterSpawnInterval: config.initialMonsterSpawnInterval,
+            currentMaxMonsterValue: config.monsterValueRange[1],
+            lastValueIncreaseTime: 0,
+            shooterIntervalId: null,
+            bulletIntervalId: null,
+            monsterIntervalId: null,
+            spawnMonsterIntervalId: null
+        };
+
+        // DOM元素
+        const gameGrid = document.getElementById('gameGrid');
+        const startBtn = document.getElementById('startBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const livesDisplay = document.getElementById('lives');
+        const scoreDisplay = document.getElementById('score');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const playAgainBtn = document.getElementById('playAgainBtn');
+        const plantButtons = document.querySelectorAll('.plant-btn');
+
+        // 初始化游戏网格
+        function initializeGrid() {
+            gameGrid.innerHTML = '';
+            gameState.grid = [];
+            
+            for (let row = 0; row < config.rows; row++) {
+                gameState.grid[row] = [];
+                for (let col = 0; col < config.cols; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell bg-path relative';
+                    cell.dataset.row = row;
+                    cell.dataset.col = col;
+                    
+                    // 添加铲除植物的右键点击事件
+                    cell.addEventListener('contextmenu', (e) => {
+                        e.preventDefault();
+                        removePlant(row, col);
+                    });
+                    
+                    // 添加鼠标悬停显示删除指示器
+                    cell.addEventListener('mouseenter', () => {
+                        if (gameState.grid[row][col].type && gameState.isPlaying) {
+                            const indicator = cell.querySelector('.remove-indicator') || document.createElement('div');
+                            indicator.className = 'remove-indicator';
+                            indicator.textContent = '×';
+                            indicator.style.top = '2px';
+                            indicator.style.right = '2px';
+                            cell.appendChild(indicator);
+                            setTimeout(() => {
+                                indicator.style.opacity = '1';
+                            }, 10);
+                        }
+                    });
+                    
+                    cell.addEventListener('mouseleave', () => {
+                        const indicator = cell.querySelector('.remove-indicator');
+                        if (indicator) {
+                            indicator.style.opacity = '0';
+                            setTimeout(() => {
+                                indicator.remove();
+                            }, 200);
+                        }
+                    });
+                    
+                    cell.addEventListener('click', () => placePlant(row, col));
+                    gameGrid.appendChild(cell);
+                    
+                    gameState.grid[row][col] = {
+                        type: null,
+                        value: null,
+                        param: 1,
+                        element: cell
+                    };
+                }
+            }
+        }
+
+        // 选择种植的植物
+        function selectPlant(plantType, value = null) {
+            plantButtons.forEach(btn => {
+                btn.classList.remove('ring-4', 'ring-accent');
+            });
+            
+            const btn = event.currentTarget;
+            btn.classList.add('ring-4', 'ring-accent');
+            
+            gameState.selectedPlant = {
+                type: plantType,
+                value: value
+            };
+        }
+
+        // 放置植物
+        function placePlant(row, col) {
+            if (!gameState.selectedPlant || !gameState.isPlaying) return;
+            
+            const cell = gameState.grid[row][col];
+            if (cell.type) return;
+            
+            const plantType = gameState.selectedPlant.type;
+            const plantValue = gameState.selectedPlant.value;
+            
+            cell.type = plantType;
+            cell.value = plantValue || (plantType === 'shooter' ? 'O' : null);
+            
+            const plantElement = document.createElement('div');
+            plantElement.className = 'planted-item';
+            
+            if (plantType === 'shooter') {
+                plantElement.textContent = 'O';
+                plantElement.classList.add('bg-secondary', 'text-white');
+                cell.element.appendChild(plantElement);
+                
+                gameState.shooters.push({
+                    row,
+                    col,
+                    lastFired: 0
+                });
+            } else if (plantType === 'operator') {
+                plantElement.innerHTML = `
+                    <div class="operator-symbol">${plantValue}</div>
+                    <div class="operator-param">${cell.param}</div>
+                `;
+                plantElement.classList.add('bg-blue-500', 'text-white');
+                cell.element.appendChild(plantElement);
+                
+                plantElement.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    cell.param = (cell.param % 5) + 1;
+                    plantElement.querySelector('.operator-param').textContent = cell.param;
+                });
+                
+                // 阻止右键点击事件冒泡到单元格
+                plantElement.addEventListener('contextmenu', (e) => {
+                    e.stopPropagation();
+                });
+            } else if (plantType === 'direction') {
+                plantElement.textContent = plantValue === '^' ? '↑' : 
+                                         plantValue === 'v' ? '↓' :
+                                         plantValue === '<' ? '←' : '→';
+                plantElement.classList.add('bg-purple-500', 'text-white');
+                cell.element.appendChild(plantElement);
+                
+                // 阻止右键点击事件冒泡到单元格
+                plantElement.addEventListener('contextmenu', (e) => {
+                    e.stopPropagation();
+                });
+            }
+        }
+
+        // 铲除植物
+        function removePlant(row, col) {
+            if (!gameState.isPlaying) return;
+            
+            const cell = gameState.grid[row][col];
+            if (!cell.type) return;
+            
+            // 如果是发射器，从发射器列表中移除
+            if (cell.type === 'shooter') {
+                gameState.shooters = gameState.shooters.filter(
+                    shooter => !(shooter.row === row && shooter.col === col)
+                );
+            }
+            
+            // 清空单元格内容
+            cell.element.innerHTML = '';
+            cell.type = null;
+            cell.value = null;
+            cell.param = 1;
+        }
+
+        // 发射子弹
+        function fireBullets() {
+            const now = Date.now();
+            
+            gameState.shooters.forEach(shooter => {
+                if (now - shooter.lastFired >= config.shooterInterval) {
+                    const bullet = {
+                        row: shooter.row,
+                        col: shooter.col + 1,
+                        value: 1,
+                        direction: '>',
+                        element: document.createElement('div')
+                    };
+                    
+                    // 显示子弹数值
+                    bullet.element.className = 'bullet';
+                    bullet.element.textContent = bullet.value;
+                    updateBulletPosition(bullet);
+                    gameGrid.appendChild(bullet.element);
+                    
+                    gameState.bullets.push(bullet);
+                    shooter.lastFired = now;
+                }
+            });
+        }
+
+        // 更新子弹位置
+        function updateBulletPosition(bullet) {
+            const cell = gameState.grid[bullet.row][bullet.col];
+            const cellRect = cell.element.getBoundingClientRect();
+            const gridRect = gameGrid.getBoundingClientRect();
+            
+            bullet.element.style.left = `${cellRect.left - gridRect.left + cellRect.width/2 - 6}px`;
+            bullet.element.style.top = `${cellRect.top - gridRect.top + cellRect.height/2 - 6}px`;
+        }
+
+        // 移动子弹
+        function moveBullets() {
+            for (let i = gameState.bullets.length - 1; i >= 0; i--) {
+                const bullet = gameState.bullets[i];
+                
+                // 检查是否遇到方向控制器
+                if (gameState.grid[bullet.row][bullet.col].type === 'direction') {
+                    bullet.direction = gameState.grid[bullet.row][bullet.col].value;
+                }
+                
+                // 检查是否遇到运算符，应用运算
+                if (gameState.grid[bullet.row][bullet.col].type === 'operator') {
+                    applyOperator(bullet, gameState.grid[bullet.row][bullet.col]);
+                    // 更新子弹显示的数值
+                    bullet.element.textContent = bullet.value.toFixed(1);
+                }
+                
+                // 根据方向移动子弹
+                switch (bullet.direction) {
+                    case '>':
+                        bullet.col++;
+                        break;
+                    case '<':
+                        bullet.col--;
+                        break;
+                    case '^':
+                        bullet.row--;
+                        break;
+                    case 'v':
+                        bullet.row++;
+                        break;
+                }
+                
+                // 检查子弹是否超出网格范围
+                if (bullet.row < 0 || bullet.row >= config.rows || 
+                    bullet.col < 0 || bullet.col >= config.cols) {
+                    bullet.element.remove();
+                    gameState.bullets.splice(i, 1);
+                    continue;
+                }
+                
+                // 更新子弹位置
+                updateBulletPosition(bullet);
+                
+                // 检查是否击中怪物
+                checkBulletMonsterCollision(bullet, i);
+            }
+        }
+
+        // 应用运算符
+        function applyOperator(bullet, operatorCell) {
+            const op = operatorCell.value;
+            const param = operatorCell.param;
+            
+            switch (op) {
+                case '+':
+                    bullet.value += param;
+                    break;
+                case '-':
+                    bullet.value -= param;
+                    break;
+                case '*':
+                    bullet.value *= param;
+                    break;
+                case '/':
+                    if (param !== 0) bullet.value /= param;
+                    break;
+                case 'abs':
+                    bullet.value = Math.abs(Math.abs(bullet.value));
+                    break;
+            }
+            
+            bullet.value = Math.round(bullet.value * 10) / 10;
+        }
+
+        // 检查子弹与怪物的碰撞
+        function checkBulletMonsterCollision(bullet, bulletIndex) {
+            for (let i = gameState.monsters.length - 1; i >= 0; i--) {
+                const monster = gameState.monsters[i];
+                
+                if (bullet.row === monster.row && bullet.col === monster.col) {
+                    // 计算怪物值与子弹值的和
+                    const result = monster.value + bullet.value;
+                    
+                    // 显示计算过程
+                    showCalculation(monster, bullet, result);
+                    
+                    // 移除子弹
+                    bullet.element.remove();
+                    gameState.bullets.splice(bulletIndex, 1);
+                    
+                    // 如果结果为0（考虑浮点数精度），怪物被消灭
+                    if (Math.abs(result) < 0.1) {
+                        monster.element.remove();
+                        gameState.monsters.splice(i, 1);
+                        
+                        gameState.score += 10;
+                        updateScore();
+                    } else {
+                        // 更新怪物值为计算结果，继续移动
+                        monster.value = result;
+                        monster.element.textContent = monster.value.toFixed(0);
+                    }
+                    
+                    return;
+                }
+            }
+        }
+
+        // 显示计算过程
+        function showCalculation(monster, bullet, result) {
+            const calculation = document.createElement('div');
+            calculation.className = 'absolute text-white font-bold z-20 transition-all duration-500 opacity-0 transform scale-50';
+            calculation.textContent = `${monster.value.toFixed(1)} + (${bullet.value.toFixed(1)}) = ${result.toFixed(1)}`;
+            
+            const cell = gameState.grid[monster.row][monster.col];
+            const cellRect = cell.element.getBoundingClientRect();
+            const gridRect = gameGrid.getBoundingClientRect();
+            
+            calculation.style.left = `${cellRect.left - gridRect.left}px`;
+            calculation.style.top = `${cellRect.top - gridRect.top - 20}px`;
+            calculation.style.width = `${cellRect.width}px`;
+            calculation.style.textAlign = 'center';
+            
+            gameGrid.appendChild(calculation);
+            
+            setTimeout(() => {
+                calculation.classList.remove('opacity-0', 'transform', 'scale-50');
+                calculation.classList.add('opacity-100', 'transform', 'scale-100');
+            }, 10);
+            
+            setTimeout(() => {
+                calculation.remove();
+            }, 1500);
+        }
+
+        // 生成怪物
+        function spawnMonster() {
+            if (!gameState.isPlaying) return;
+            
+            gameState.monsterCount++;
+            
+            if (gameState.monsterCount % 10 === 0) {
+                gameState.currentMonsterSpawnInterval = Math.max(
+                    1000,
+                    gameState.currentMonsterSpawnInterval - config.monsterSpawnRateDecrement
+                );
+                
+                clearInterval(gameState.spawnMonsterIntervalId);
+                gameState.spawnMonsterIntervalId = setInterval(spawnMonster, gameState.currentMonsterSpawnInterval);
+            }
+            
+            const now = Date.now();
+            if (now - gameState.lastValueIncreaseTime > 10000) {
+                gameState.currentMaxMonsterValue = Math.min(
+                    config.maxMonsterValue,
+                    Math.round(gameState.currentMaxMonsterValue + config.valueIncreaseRate)
+                );
+                gameState.lastValueIncreaseTime = now;
+            }
+            
+            const row = Math.floor(Math.random() * config.rows);
+            const value = (Math.random() < 0.7 ? -1 : 1) * (Math.floor(Math.random() * (gameState.currentMaxMonsterValue - config.monsterValueRange[0] + 1)) + config.monsterValueRange[0]);
+            
+            const monster = {
+                row,
+                col: config.cols - 1,
+                value,
+                element: document.createElement('div')
+            };
+            
+            monster.element.className = 'monster';
+            monster.element.textContent = value;
+            updateMonsterPosition(monster);
+            gameGrid.appendChild(monster.element);
+            
+            gameState.monsters.push(monster);
+        }
+
+        // 更新怪物位置
+        function updateMonsterPosition(monster) {
+            const cell = gameState.grid[monster.row][monster.col];
+            const cellRect = cell.element.getBoundingClientRect();
+            const gridRect = gameGrid.getBoundingClientRect();
+            
+            monster.element.style.left = `${cellRect.left - gridRect.left + 2}px`;
+            monster.element.style.top = `${cellRect.top - gridRect.top + 2}px`;
+            monster.element.style.width = `${cellRect.width - 4}px`;
+            monster.element.style.height = `${cellRect.height - 4}px`;
+        }
+
+        // 移动怪物
+        function moveMonsters() {
+            for (let i = gameState.monsters.length - 1; i >= 0; i--) {
+                const monster = gameState.monsters[i];
+                
+                monster.col--;
+                
+                if (monster.col < 0) {
+                    monster.element.remove();
+                    gameState.monsters.splice(i, 1);
+                    
+                    gameState.lives--;
+                    updateLives();
+                    
+                    if (gameState.lives <= 0) {
+                        endGame();
+                    }
+                    
+                    continue;
+                }
+                
+                updateMonsterPosition(monster);
+            }
+        }
+
+        // 更新生命值显示
+        function updateLives() {
+            livesDisplay.textContent = gameState.lives;
+        }
+
+        // 更新分数显示
+        function updateScore() {
+            scoreDisplay.textContent = gameState.score;
+        }
+
+        // 开始游戏
+        function startGame() {
+            if (gameState.isPlaying) return;
+            
+            gameState.isPlaying = true;
+            gameState.lastValueIncreaseTime = Date.now();
+            startBtn.disabled = true;
+            startBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            
+            gameState.shooterIntervalId = setInterval(fireBullets, 100);
+            gameState.bulletIntervalId = setInterval(moveBullets, config.bulletSpeed);
+            gameState.monsterIntervalId = setInterval(moveMonsters, config.monsterSpeed);
+            gameState.spawnMonsterIntervalId = setInterval(spawnMonster, gameState.currentMonsterSpawnInterval);
+            
+            setTimeout(spawnMonster, 1000);
+        }
+
+        // 重置游戏
+        function resetGame() {
+            clearInterval(gameState.shooterIntervalId);
+            clearInterval(gameState.bulletIntervalId);
+            clearInterval(gameState.monsterIntervalId);
+            clearInterval(gameState.spawnMonsterIntervalId);
+            
+            gameState.bullets.forEach(bullet => bullet.element.remove());
+            gameState.monsters.forEach(monster => monster.element.remove());
+            
+            gameState.isPlaying = false;
+            gameState.score = 0;
+            gameState.lives = config.initialLives;
+            gameState.shooters = [];
+            gameState.bullets = [];
+            gameState.monsters = [];
+            gameState.monsterCount = 0;
+            gameState.currentMonsterSpawnInterval = config.initialMonsterSpawnInterval;
+            gameState.currentMaxMonsterValue = config.monsterValueRange[1];
+            
+            updateScore();
+            updateLives();
+            
+            initializeGrid();
+            
+            startBtn.disabled = false;
+            startBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            plantButtons.forEach(btn => btn.classList.remove('ring-4', 'ring-accent'));
+            gameState.selectedPlant = null;
+            
+            gameOverModal.classList.add('hidden');
+        }
+
+        // 结束游戏
+        function endGame() {
+            clearInterval(gameState.shooterIntervalId);
+            clearInterval(gameState.bulletIntervalId);
+            clearInterval(gameState.monsterIntervalId);
+            clearInterval(gameState.spawnMonsterIntervalId);
+            
+            gameState.isPlaying = false;
+            
+            finalScoreDisplay.textContent = gameState.score;
+            gameOverModal.classList.remove('hidden');
+        }
+
+        // 阻止右键菜单全局出现
+        document.addEventListener('contextmenu', (e) => {
+            if (e.target.closest('#gameGrid')) {
+                e.preventDefault();
+            }
+        });
+
+        // 事件监听
+        startBtn.addEventListener('click', startGame);
+        resetBtn.addEventListener('click', resetGame);
+        playAgainBtn.addEventListener('click', resetGame);
+
+        plantButtons.forEach(btn => {
+            const type = btn.dataset.type;
+            const value = btn.dataset.op || btn.dataset.dir;
+            
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                selectPlant(type, value);
+            });
+        });
+
+        // 初始化游戏
+        window.addEventListener('load', () => {
+            initializeGrid();
+        });
+    </script>
+</body>
+</html>

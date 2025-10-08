@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>公交调度游戏 - 可视化版</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+  <style>
+    :root {
+      --primary-color: #3498db;
+      --secondary-color: #2c3e50;
+      --accent-color: #e74c3c;
+      --light-color: #ecf0f1;
+      --dark-color: #34495e;
+      --success-color: #2ecc71;
+      --transfer-color: #27ae60; /* 换乘站颜色 */
+      --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      --transition: all 0.3s ease;
+    }
+    
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      text-align: center;
+      margin: 0;
+      padding: 20px;
+      background-color: #f9f9f9;
+      color: var(--secondary-color);
+      line-height: 1.6;
+    }
+    
+    h1 {
+      color: var(--primary-color);
+      margin-bottom: 30px;
+      text-shadow: var(--shadow);
+    }
+    
+    #gameContainer {
+      max-width: 1000px;
+      margin: 0 auto;
+      background-color: white;
+      border-radius: 10px;
+      box-shadow: var(--shadow);
+      padding: 20px;
+    }
+    
+    .money-display {
+      background-color: #e8f4fd;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 15px;
+      font-size: 18px;
+      font-weight: bold;
+      color: #2c3e50;
+      display: inline-block;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .money-display i {
+      color: #f39c12;
+      margin-right: 8px;
+    }
+    
+    .controls-panel {
+      background-color: var(--light-color);
+      border-radius: 8px;
+      padding: 15px;
+      margin-bottom: 20px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 15px;
+      align-items: center;
+      justify-content: center;
+    }
+    
+    .control-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    label {
+      font-weight: 500;
+      color: var(--dark-color);
+    }
+    
+    input[type="text"], input[type="number"] {
+      padding: 8px 12px;
+      border: 2px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      transition: var(--transition);
+    }
+    
+    input[type="text"]:focus, input[type="number"]:focus {
+      outline: none;
+      border-color: var(--primary-color);
+      box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+    }
+    
+    button {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      border-radius: 4px;
+      padding: 8px 16px;
+      cursor: pointer;
+      font-size: 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: var(--transition);
+    }
+    
+    button:hover {
+      background-color: #2980b9;
+      transform: translateY(-2px);
+      box-shadow: var(--shadow);
+    }
+    
+    button:disabled {
+      background-color: #bdc3c7;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    
+    select {
+      padding: 8px 12px;
+      border: 2px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      background-color: white;
+      transition: var(--transition);
+    }
+    
+    select:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+    
+    #gameCanvas {
+      border: 1px solid #ccc;
+      display: block;
+      margin: 0 auto;
+      background-color: #fafafa;
+      border-radius: 8px;
+      cursor: crosshair;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    }
+    
+    .line-status {
+      margin-left: 10px;
+      padding: 3px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+    
+    .line-has-bus {
+      background-color: rgba(46, 204, 113, 0.2);
+      color: var(--success-color);
+    }
+    
+    .line-no-bus {
+      background-color: rgba(231, 76, 60, 0.2);
+      color: var(--accent-color);
+    }
+    
+    .info-text {
+      margin-top: 15px;
+      font-size: 14px;
+      color: #666;
+      font-style: italic;
+    }
+    
+    .profit-popup {
+      position: absolute;
+      color: #27ae60;
+      font-weight: bold;
+      pointer-events: none;
+      animation: floatUp 1.5s ease-out forwards;
+    }
+    
+    @keyframes floatUp {
+      0% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      100% {
+        opacity: 0;
+        transform: translateY(-30px);
+      }
+    }
+    
+    @media (max-width: 768px) {
+      .controls-panel {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      .control-group {
+        flex-direction: column;
+        align-items: stretch;
+      }
+      
+      #gameCanvas {
+        width: 100%;
+        height: auto;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="gameContainer">
+    <h1>公交调度游戏 <i class="fas fa-bus-alt"></i></h1>
+    
+    <div class="money-display">
+      <i class="fas fa-coins"></i> 当前资金: <span id="moneyAmount">100</span> 敝司
+    </div>
+    
+    <div class="controls-panel">
+      <div class="control-group">
+        <label for="stationName">命名新的公交站：</label>
+        <input type="text" id="stationName" placeholder="请输入公交站名">
+        <button onclick="addStation()"><i class="fas fa-plus-circle"></i> 添加公交站</button>
+      </div>
+      
+      <div class="control-group">
+        <label for="lineSelect">选择线路：</label>
+        <select id="lineSelect" onchange="updateSelectedLine()">
+          <option value="-1">新建线路</option>
+        </select>
+        <span id="lineBusStatus" class="line-status line-no-bus">无公交车</span>
+      </div>
+      
+      <div class="control-group">
+        <label for="lineFare">线路票价：</label>
+        <input type="number" id="lineFare" min="1" value="2" placeholder="设置票价">
+        <button onclick="setLineFare()"><i class="fas fa-ticket-alt"></i> 应用票价</button>
+      </div>
+      
+      <div class="control-group">
+        <label for="busType">公交型号：</label>
+        <select id="busType">
+          <option value="standard">标准型</option>
+          <option value="large">扩容型</option>
+          <option value="speed">快速型</option>
+        </select>
+        <button onclick="addBus()" id="addBusBtn"><i class="fas fa-bus"></i> 添加公交车</button>
+      </div>
+      
+      <div class="control-group">
+        <button onclick="saveState()"><i class="fas fa-save"></i> 保存状态</button>
+      </div>
+    </div>
+    
+    <canvas id="gameCanvas" width="900" height="600"></canvas>
+    
+    <p class="info-text">提示：左键点击画布添加公交站，右键点击公交站可修改名称或设置为换乘站。公交车到达终点后返回起点重新出发。换乘站可被多条线路共用，票价可单独设置。</p>
+  </div>
+
+  <script>
+    let stations = [];
+    let lines = [
+      { id: 0, stations: [], color: getRandomColor(), fare: 2 }, 
+      { id: 1, stations: [], color: getRandomColor(), fare: 2 }
+    ];
+    let buses = [];
+    let ctx;
+    let selectedLineId = 1; // 默认选择线路1
+    let money = 100; // 玩家资金，单位：敝司，开局100
+    let profitPopups = []; // 利润提示动画
+
+    const BASE_PASS_INTERVAL = 5000; // 基础乘客生成间隔
+    const BUS_TYPES = {
+      standard: { speed: 1, capacity: 30, name: "标准型", cost: 100, profitPerPassenger: 1 },
+      large: { speed: 0.8, capacity: 60, name: "扩容型", cost: 200, profitPerPassenger: 1 },
+      speed: { speed: 2.1, capacity: 12, name: "快速型", cost: 150, profitPerPassenger: 1 }
+    };
+
+    document.addEventListener("DOMContentLoaded", () => {
+      const canvas = document.getElementById("gameCanvas");
+      ctx = canvas.getContext("2d");
+
+      // 每秒更新画面 (60fps)
+      setInterval(update, 1000 / 60);
+
+      // 定时生成乘客
+      setInterval(generatePassengers, calculatePassInterval());
+
+      canvas.addEventListener('click', (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        addStationAt(x, y);
+      });
+
+      canvas.addEventListener('contextmenu', (event) => {
+        event.preventDefault(); // 阻止默认的右键菜单
+        const rect = canvas.getBoundingClientRect();
+        const x = event.clientX - rect.left;
+        const y = event.clientY - rect.top;
+        editStationOptions(x, y);
+      });
+
+      // 初始化线路选择器
+      updateLineSelector();
+      updateBusButtonState();
+      updateMoneyDisplay();
+    });
+
+    // 更新资金显示
+    function updateMoneyDisplay() {
+      document.getElementById("moneyAmount").textContent = money.toFixed(1);
+    }
+
+    // 添加利润提示
+    function addProfitPopup(x, y, amount, isExpense = false) {
+      const prefix = isExpense ? "-" : "+";
+      const color = isExpense ? "rgba(231, 76, 60, " : "rgba(39, 174, 96, ";
+      
+      profitPopups.push({
+        x: x,
+        y: y,
+        amount: `${prefix}${amount}`,
+        color: color,
+        opacity: 1,
+        timer: 0
+      });
+    }
+
+    // 设置线路票价
+    function setLineFare() {
+      const fareInput = document.getElementById("lineFare");
+      const fare = parseFloat(fareInput.value);
+      
+      if (isNaN(fare) || fare <= 0) {
+        alert("请输入有效的票价（正数）");
+        return;
+      }
+      
+      lines[selectedLineId].fare = fare;
+      alert(`线路 ${selectedLineId} 票价已设置为 ${fare} 敝司`);
+    }
+
+    // 编辑站点选项（名称和换乘站）
+    function editStationOptions(x, y) {
+      const station = stations.find(s => 
+        Math.pow(s.x - x, 2) + Math.pow(s.y - y, 2) <= Math.pow(15, 2)
+      );
+      
+      if (station) {
+        const action = prompt(
+          `当前站点: ${station.name}\n1. 修改名称\n2. ${station.isTransfer ? '取消换乘站' : '设为换乘站'}`,
+          "请输入1或2选择操作"
+        );
+        
+        if (action === "1") {
+          const newName = prompt("请输入新的公交站名:", station.name);
+          if (newName && newName.trim()) {
+            station.name = newName.trim();
+          }
+        } else if (action === "2") {
+          station.isTransfer = !station.isTransfer;
+          alert(`${station.name}已${station.isTransfer ? '设为换乘站' : '取消换乘站'}`);
+        }
+        renderStations();
+      }
+    }
+
+    function addStation() {
+      const stationName = document.getElementById("stationName").value.trim();
+      if (!stationName) {
+        alert("公交站名称不能为空！");
+        return;
+      }
+
+      // 随机位置添加公交站
+      const x = Math.random() * 800 + 50;
+      const y = Math.random() * 500 + 50;
+
+      addStationAt(x, y, stationName);
+      
+      // 清空输入框
+      document.getElementById("stationName").value = "";
+    }
+
+    function addStationAt(x, y, name = "新站") {
+      const newStation = { 
+        id: stations.length, 
+        name, 
+        x, 
+        y, 
+        passengers: 0,
+        waitingPassengers: {}, // 记录等待前往其他站点的乘客
+        isTransfer: false // 是否为换乘站
+      };
+      stations.push(newStation);
+
+      if (selectedLineId >= 0) {
+        // 检查是否已存在于线路中（换乘站允许重复添加）
+        const isAlreadyInLine = lines[selectedLineId].stations.includes(newStation.id);
+        if (!isAlreadyInLine || newStation.isTransfer) {
+          lines[selectedLineId].stations.push(newStation.id);
+        }
+      }
+
+      renderStations();
+      updateLineSelector();
+    }
+
+    function renderStations() {
+      // 清除画布并绘制背景
+      ctx.clearRect(0, 0, 900, 600);
+      ctx.fillStyle = "#f9f9f9";
+      ctx.fillRect(0, 0, 900, 600);
+
+      // 绘制线路
+      lines.slice(1).forEach(line => { // 跳过线路0
+        if (line.stations.length < 2) return;
+        
+        ctx.beginPath();
+        line.stations.forEach((stationId, index) => {
+          const station = stations.find(s => s.id === stationId);
+          if (index === 0) {
+            ctx.moveTo(station.x, station.y);
+          } else {
+            ctx.lineTo(station.x, station.y);
+          }
+        });
+        
+        // 添加线路箭头指示方向
+        if (line.stations.length >= 2) {
+          const lastStation = stations.find(s => s.id === line.stations[line.stations.length - 1]);
+          const prevStation = stations.find(s => s.id === line.stations[line.stations.length - 2]);
+          const angle = Math.atan2(lastStation.y - prevStation.y, lastStation.x - prevStation.x);
+          
+          ctx.save();
+          ctx.translate(lastStation.x, lastStation.y);
+          ctx.rotate(angle);
+          ctx.moveTo(0, 0);
+          ctx.lineTo(-15, 5);
+          ctx.lineTo(-15, -5);
+          ctx.restore();
+        }
+        
+        ctx.lineWidth = 4; // 设置线条宽度
+        ctx.strokeStyle = line.color;
+        ctx.stroke();
+        
+        // 绘制线路ID和票价标签
+        if (line.stations.length > 0) {
+          const firstStation = stations.find(s => s.id === line.stations[0]);
+          ctx.fillStyle = line.color;
+          ctx.font = "bold 14px sans-serif";
+          ctx.fillText(`线路 ${line.id} (票价: ${line.fare}敝司)`, firstStation.x - 40, firstStation.y - 20);
+        }
+      });
+
+      // 绘制公交站
+      stations.forEach(station => {
+        // 绘制站台底座
+        ctx.beginPath();
+        ctx.arc(station.x, station.y, 12, 0, Math.PI * 2);
+        ctx.fillStyle = "#e0e0e0";
+        ctx.fill();
+        
+        // 绘制站台（换乘站用不同颜色）
+        ctx.beginPath();
+        ctx.arc(station.x, station.y, 10, 0, Math.PI * 2);
+        ctx.fillStyle = station.isTransfer ? "#2ecc71" : "blue";
+        ctx.fill();
+        
+        // 标记换乘站
+        if (station.isTransfer) {
+          ctx.beginPath();
+          ctx.arc(station.x, station.y, 15, 0, Math.PI * 2);
+          ctx.strokeStyle = "#27ae60";
+          ctx.lineWidth = 2;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]); // 重置虚线
+        }
+        
+        // 绘制站台名称和乘客数
+        ctx.fillStyle = "black";
+        ctx.font = "13px sans-serif";
+        ctx.fillText(station.name, station.x + 15, station.y);
+        ctx.fillText(`乘客: ${station.passengers}`, station.x + 15, station.y + 20);
+        
+        // 如果有乘客，绘制乘客图标
+        if (station.passengers > 0) {
+          ctx.fillStyle = "#e74c3c";
+          ctx.beginPath();
+          ctx.arc(station.x - 15, station.y, 5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      });
+
+      // 绘制公交车
+      buses.forEach(bus => {
+        const busInfo = BUS_TYPES[bus.type];
+        const busColor = lines[bus.lineId].color;
+        
+        // 绘制公交车
+        ctx.save();
+        ctx.translate(bus.x, bus.y);
+        ctx.rotate(getAngleToNextStation(bus));
+        
+        // 绘制巴士形状
+        ctx.fillStyle = busColor;
+        ctx.fillRect(-12, -8, 24, 16); // 车身
+        ctx.fillStyle = "white";
+        ctx.fillRect(-8, -6, 6, 4); // 窗户
+        ctx.fillRect(2, -6, 6, 4); // 窗户
+        
+        ctx.restore();
+        
+        // 显示公交车信息
+        ctx.fillStyle = "black";
+        ctx.font = "11px sans-serif";
+        ctx.fillText(`${busInfo.name}`, bus.x - 15, bus.y - 15);
+        ctx.fillText(`乘客: ${bus.passengers}/${busInfo.capacity}`, bus.x - 25, bus.y + 25);
+      });
+
+      // 绘制利润提示动画
+      drawProfitPopups();
+    }
+
+    // 绘制利润提示动画
+    function drawProfitPopups() {
+      profitPopups.forEach(popup => {
+        ctx.fillStyle = `${popup.color}${popup.opacity})`;
+        ctx.font = "14px sans-serif";
+        ctx.fillText(`${popup.amount} 敝司`, popup.x, popup.y);
+      });
+    }
+
+    function getAngleToNextStation(bus) {
+      const currentStation = stations.find(s => s.id === lines[bus.lineId].stations[bus.targetIndex]);
+      const nextStationId = lines[bus.lineId].stations[(bus.targetIndex + 1) % lines[bus.lineId].stations.length];
+      const nextStation = stations.find(s => s.id === nextStationId);
+      const dx = nextStation.x - currentStation.x;
+      const dy = nextStation.y - currentStation.y;
+      return Math.atan2(dy, dx);
+    }
+
+    function update() {
+      moveBuses();
+      updateProfitPopups();
+      renderStations();
+    }
+
+    // 更新利润提示动画
+    function updateProfitPopups() {
+      profitPopups.forEach((popup, index) => {
+        popup.timer++;
+        popup.y -= 0.5;
+        if (popup.timer > 60) { // 30帧后开始淡出
+          popup.opacity -= 0.05;
+        }
+        if (popup.opacity <= 0) {
+          profitPopups.splice(index, 1);
+        }
+      });
+    }
+
+    function generatePassengers() {
+      if (stations.length < 2) return; // 至少需要2个站点才会生成有目的地的乘客
+      
+      const fromStation = stations[Math.floor(Math.random() * stations.length)];
+      
+      // 随机选择一个不同的目的站点
+      let toStation;
+      do {
+        toStation = stations[Math.floor(Math.random() * stations.length)];
+      } while (toStation.id === fromStation.id);
+      
+      // 记录等待前往该站点的乘客
+      if (!fromStation.waitingPassengers[toStation.id]) {
+        fromStation.waitingPassengers[toStation.id] = 0;
+      }
+      fromStation.waitingPassengers[toStation.id]++;
+      fromStation.passengers++;
+    }
+
+    function moveBuses() {
+      if (buses.length === 0 || stations.length === 0) return;
+
+      for (let i = buses.length - 1; i >= 0; i--) {
+        const bus = buses[i];
+        if (bus.targetIndex === undefined) bus.targetIndex = 0;
+
+        const line = lines[bus.lineId];
+        const currentStationId = line.stations[bus.targetIndex];
+        const target = stations.find(s => s.id === currentStationId);
+        const dx = target.x - bus.x;
+        const dy = target.y - bus.y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+
+        // 检查是否到达目标站点
+        if (dist < 5) {
+          // 到达站点，处理上下客
+          handlePassengerExchange(bus, currentStationId);
+          
+          // 检查是否是终点站
+          const isLastStation = bus.targetIndex === line.stations.length - 1;
+          
+          if (isLastStation) {
+            // 终点站处理：返回起点站重新开始
+            const startStation = stations.find(s => s.id === line.stations[0]);
+            bus.x = startStation.x;
+            bus.y = startStation.y;
+            bus.targetIndex = 0;
+            bus.passengers = 0;
+            bus.passengersList = {};
+            continue;
+          }
+
+          // 移动到下一站
+          bus.targetIndex++;
+        } else {
+          // 移动到下一站
+          const moveRatio = BUS_TYPES[bus.type].speed / dist;
+          bus.x += dx * moveRatio;
+          bus.y += dy * moveRatio;
+        }
+      }
+    }
+
+    // 处理乘客上下车
+    function handlePassengerExchange(bus, currentStationId) {
+      const currentStation = stations.find(s => s.id === currentStationId);
+      const line = lines[bus.lineId];
+      const busInfo = BUS_TYPES[bus.type];
+      
+      // 1. 乘客下车：检查是否有前往当前站点的乘客
+      let alightedPassengers = 0;
+      if (bus.passengersList && bus.passengersList[currentStationId]) {
+        alightedPassengers = bus.passengersList[currentStationId];
+        bus.passengers -= alightedPassengers;
+        delete bus.passengersList[currentStationId];
+        
+        // 每有一位乘客下车，赚取利润（基于线路票价）
+        const profit = alightedPassengers * line.fare;
+        if (profit > 0) {
+          money += profit;
+          updateMoneyDisplay();
+          addProfitPopup(currentStation.x, currentStation.y, profit.toFixed(1));
+        }
+      }
+      
+      // 2. 乘客上车：搭载前往后续站点的乘客
+      if (currentStation.waitingPassengers) {
+        // 计算还能搭载多少乘客
+        const availableSpace = busInfo.capacity - bus.passengers;
+        if (availableSpace > 0) {
+          // 初始化乘客列表（记录前往各站点的乘客数量）
+          if (!bus.passengersList) {
+            bus.passengersList = {};
+          }
+          
+          // 获取线路上的后续站点
+          const currentIndex = line.stations.indexOf(currentStationId);
+          const subsequentStations = line.stations.slice(currentIndex + 1);
+          
+          // 只搭载前往后续站点的乘客
+          subsequentStations.forEach(stationId => {
+            if (currentStation.waitingPassengers[stationId] && availableSpace > 0) {
+              const take = Math.min(currentStation.waitingPassengers[stationId], availableSpace);
+              
+              // 记录上车的乘客
+              if (!bus.passengersList[stationId]) {
+                bus.passengersList[stationId] = 0;
+              }
+              bus.passengersList[stationId] += take;
+              
+              // 更新站点和公交车的乘客数量
+              currentStation.waitingPassengers[stationId] -= take;
+              currentStation.passengers -= take;
+              bus.passengers += take;
+            }
+          });
+        }
+      }
+    }
+
+    function addBus() {
+      // 检查线路是否已有公交车
+      const lineHasBus = buses.some(bus => bus.lineId === selectedLineId);
+      if (lineHasBus) {
+        alert("每条线路只能有一辆公交车！");
+        return;
+      }
+      
+      // 检查线路是否有足够的站点
+      if (lines[selectedLineId].stations.length < 2) {
+        alert("线路需要至少2个站点才能添加公交车！");
+        return;
+      }
+      
+      // 检查是否有足够的资金购买公交车
+      const busType = document.getElementById("busType").value;
+      const busCost = BUS_TYPES[busType].cost;
+      
+      if (money < busCost) {
+        alert(`资金不足！购买${BUS_TYPES[busType].name}需要${busCost}敝司，当前只有${money.toFixed(1)}敝司。`);
+        return;
+      }
+      
+      // 扣除购买公交车的费用
+      money -= busCost;
+      updateMoneyDisplay();
+      
+      // 创建公交车
+      const start = stations.find(s => s.id === lines[selectedLineId].stations[0]);
+      buses.push({
+        x: start.x,
+        y: start.y,
+        passengers: 0,
+        lineId: selectedLineId,
+        targetIndex: 0,
+        type: busType,
+        passengersList: {}
+      });
+      
+      // 更新按钮状态
+      updateBusButtonState();
+      
+      // 添加购买提示
+      addProfitPopup(start.x, start.y, busCost, true);
+    }
+
+    function updateSelectedLine() {
+      const selectElement = document.getElementById("lineSelect");
+      selectedLineId = parseInt(selectElement.value);
+      
+      if (selectedLineId === -1) {
+        const newLineId = lines.length;
+        lines.push({ id: newLineId, stations: [], color: getRandomColor(), fare: 2 });
+        selectedLineId = newLineId;
+        updateLineSelector();
+      }
+      
+      // 更新按钮状态和票价显示
+      updateBusButtonState();
+      document.getElementById("lineFare").value = lines[selectedLineId].fare;
+    }
+
+    function updateLineSelector() {
+      const selectElement = document.getElementById("lineSelect");
+      selectElement.innerHTML = '<option value="-1">新建线路</option>';
+      
+      lines.forEach(line => {
+        const option = document.createElement("option");
+        option.value = line.id;
+        option.textContent = `线路 ${line.id}`;
+        selectElement.appendChild(option);
+      });
+      
+      selectElement.value = selectedLineId.toString();
+      updateBusButtonState();
+      // 更新当前线路票价显示
+      if (selectedLineId >= 0) {
+        document.getElementById("lineFare").value = lines[selectedLineId].fare;
+      }
+    }
+
+    // 更新添加公交车按钮状态
+    function updateBusButtonState() {
+      const addBusBtn = document.getElementById("addBusBtn");
+      const lineBusStatus = document.getElementById("lineBusStatus");
+      
+      // 检查线路是否已有公交车
+      const lineHasBus = buses.some(bus => bus.lineId === selectedLineId);
+      
+      // 检查线路是否有足够的站点
+      const hasEnoughStations = lines[selectedLineId]?.stations.length >= 2;
+      
+      // 更新按钮状态
+      addBusBtn.disabled = lineHasBus || !hasEnoughStations;
+      
+      // 更新线路状态文本
+      if (lineHasBus) {
+        lineBusStatus.textContent = "已有公交车";
+        lineBusStatus.className = "line-status line-has-bus";
+      } else {
+        lineBusStatus.textContent = "无公交车";
+        lineBusStatus.className = "line-status line-no-bus";
+      }
+    }
+
+    function getRandomColor() {
+      // 生成明亮且适合线路显示的颜色
+      const hue = Math.floor(Math.random() * 360);
+      return `hsl(${hue}, 70%, 50%)`;
+    }
+
+    function calculatePassInterval() {
+      const numBuses = buses.length;
+      return Math.max(BASE_PASS_INTERVAL / (numBuses + 1), 1000); // 确保最小间隔为1000ms
+    }
+
+    function saveState() {
+      const gameState = {
+        stations: stations,
+        lines: lines,
+        buses: buses,
+        money: money
+      };
+      localStorage.setItem('gameState', JSON.stringify(gameState));
+      alert("游戏状态已保存！");
+    }
+  </script>
+</body>
+</html>

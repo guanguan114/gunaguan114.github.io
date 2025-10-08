@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>节奏大师 - 固定间隔版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#8b5cf6',
+                        secondary: '#10b981',
+                        accent: '#f59e0b',
+                        danger: '#ef4444',
+                        dark: '#1e293b',
+                        light: '#f8fafc'
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .pulse-effect {
+                animation: pulse 0.5s ease-in-out;
+            }
+            .beat-indicator {
+                @apply w-3 h-3 rounded-full inline-block mx-1 transition-all duration-300;
+            }
+            .timeline-bar {
+                @apply h-2 rounded-full transition-all duration-300;
+            }
+            .interval-label {
+                @apply text-xs text-center mt-1 whitespace-nowrap;
+            }
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .bounce-animation {
+            animation: bounce 1s infinite;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-dark to-slate-900 text-light min-h-screen flex flex-col items-center justify-between py-8">
+    <div class="w-full max-w-md px-4">
+        <!-- 游戏标题 -->
+        <header class="text-center mb-6">
+            <h1 class="text-[clamp(1.5rem,5vw,2.5rem)] font-bold text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary mb-2">节奏大师</h1>
+            <p class="text-slate-300" id="game-description">记住固定间隔节奏，然后重复</p>
+        </header>
+
+        <!-- 游戏状态和分数 -->
+        <div class="flex justify-between items-center mb-6 px-4 py-3 bg-slate-800/50 rounded-lg shadow-md">
+            <div id="game-status" class="text-accent font-bold">点击开始游戏</div>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center">
+                    <i class="fa fa-star text-yellow-400 mr-2"></i>
+                    <span id="score" class="font-bold">0</span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fa fa-signal text-green-400 mr-2"></i>
+                    <span id="level" class="font-bold">1</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 可用间隔+固定误差说明 -->
+        <div class="mb-4 p-3 bg-slate-800/30 rounded-lg text-xs text-center">
+            <span class="mr-3">可用间隔: </span>
+            <span class="inline-block px-2 py-1 bg-primary/20 rounded mx-1">1拍</span>
+            <span class="inline-block px-2 py-1 bg-primary/20 rounded mx-1">1/2拍</span>
+            <span class="inline-block px-2 py-1 bg-primary/20 rounded mx-1">1/3拍</span>
+            <span class="inline-block px-2 py-1 bg-primary/20 rounded mx-1">2/3拍</span>
+            <span class="inline-block px-2 py-1 bg-primary/20 rounded mx-1">1/4拍</span>
+            <span class="inline-block px-2 py-1 bg-primary/20 rounded mx-1">3/4拍</span>
+            <span class="ml-3 text-accent">| 固定允许误差: <span id="fixed-tolerance">100</span>ms</span>
+        </div>
+
+        <!-- 节拍时间线指示器 -->
+        <div class="mb-8 px-2">
+            <div class="flex items-center justify-between mb-2 text-xs text-slate-400">
+                <span>节奏示意</span>
+                <span id="sequence-length">长度: 0</span>
+            </div>
+            <div id="timeline" class="flex items-center h-4 w-full gap-1">
+                <!-- 节拍指示器将在这里动态生成 -->
+            </div>
+            <div id="interval-labels" class="flex justify-between mt-1 px-1">
+                <!-- 间隔标签将在这里动态生成 -->
+            </div>
+        </div>
+
+        <!-- 主要节拍按钮 -->
+        <div class="flex justify-center mb-8">
+            <button id="beat-button" class="w-40 h-40 md:w-56 md:h-56 rounded-full bg-gradient-to-br from-primary to-purple-800 flex items-center justify-center text-5xl shadow-lg hover:shadow-primary/30 transition-all duration-300 active:scale-95 focus:outline-none focus:ring-4 focus:ring-primary/50">
+                <i class="fa fa-music"></i>
+            </button>
+        </div>
+
+        <!-- 游戏控制按钮 -->
+        <div class="flex justify-center gap-4">
+            <button id="start-button" class="bg-primary hover:bg-primary/80 text-white font-bold py-3 px-6 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl flex items-center">
+                <i class="fa fa-play mr-2"></i> 开始
+            </button>
+            <button id="reset-button" class="hidden bg-slate-600 hover:bg-slate-500 text-white font-bold py-3 px-6 rounded-full transition-all duration-300 shadow-lg hover:shadow-xl flex items-center">
+                <i class="fa fa-refresh mr-2"></i> 重置
+            </button>
+        </div>
+
+        <!-- 游戏说明 -->
+        <div class="mt-8 bg-slate-800/30 p-4 rounded-lg text-sm">
+            <h2 class="text-lg font-bold mb-2 text-secondary">游戏说明</h2>
+            <ul class="list-disc list-inside space-y-1 text-slate-300">
+                <li>游戏会使用固定间隔(1, 1/2, 1/3, 2/3, 1/4, 3/4拍)展示节奏</li>
+                <li>所有间隔统一允许 <span class="text-accent">±100ms</span> 误差（随等级提升会减小）</li>
+                <li>当提示"轮到你了"时，请按照相同的间隔点击按钮</li>
+                <li>每轮会增加一个节拍，难度逐渐提升</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // 游戏状态变量 - 【核心修改：将tolerance改为固定毫秒值（初始50ms）】
+        const gameState = {
+            isPlaying: false,
+            isPlayerTurn: false,
+            sequence: [], // 存储节拍的相对比例（如1, 0.5）
+            sequenceMs: [], // 存储节拍的实际毫秒值（如1000ms, 500ms）
+            playerSequence: [], // 存储玩家输入的毫秒间隔
+            lastPlayerTapTime: 0,
+            score: 0,
+            level: 1,
+            fixedTolerance: 100, // 固定最大允许误差（毫秒），解决短间隔容错太小的问题
+            minTolerance: 30, // 误差最小值（避免后期难度过高）
+            baseBeatMs: 1000, // 基础拍时长（1拍=1000ms）
+            isFirstTap: false,
+            intervalOptions: [1, 1/2, 1/3, 2/3, 1/4, 3/4] // 固定间隔选项
+        };
+
+        // 间隔的分数表示文本
+        const intervalText = {
+            1: '1',
+            0.5: '1/2',
+            0.3333333333333333: '1/3',
+            0.6666666666666666: '2/3',
+            0.25: '1/4',
+            0.75: '3/4'
+        };
+
+        // DOM元素（新增固定误差显示元素）
+        const beatButton = document.getElementById('beat-button');
+        const startButton = document.getElementById('start-button');
+        const resetButton = document.getElementById('reset-button');
+        const gameStatus = document.getElementById('game-status');
+        const scoreDisplay = document.getElementById('score');
+        const levelDisplay = document.getElementById('level');
+        const timeline = document.getElementById('timeline');
+        const intervalLabels = document.getElementById('interval-labels');
+        const sequenceLength = document.getElementById('sequence-length');
+        const fixedToleranceDisplay = document.getElementById('fixed-tolerance'); // 显示当前固定误差
+
+        // 音频上下文和音效
+        let audioContext;
+        const soundFrequencies = [660, 780, 880, 980]; // 不同音高
+
+        // 初始化音频（符合浏览器交互激活政策）
+        function initAudio() {
+            try {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext;
+                audioContext = new AudioContext();
+            } catch (e) {
+                console.warn('Web Audio API 不受支持，无法播放音效');
+            }
+        }
+
+        // 播放节拍音效
+        function playSound() {
+            if (!audioContext) return;
+            const frequency = soundFrequencies[Math.floor(Math.random() * soundFrequencies.length)];
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.value = frequency;
+            gainNode.gain.value = 0.1; // 控制音量
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            oscillator.start();
+            oscillator.stop(audioContext.currentTime + 0.2); // 音效时长0.2秒
+        }
+
+        // 激活节拍按钮（视觉反馈）
+        function activateBeat() {
+            beatButton.classList.add('pulse-effect');
+            playSound();
+            setTimeout(() => {
+                beatButton.classList.remove('pulse-effect');
+            }, 300); // 动画持续0.3秒
+        }
+
+        // 生成固定间隔的节拍（从选项中随机选择）
+        function generateBeatInterval() {
+            const randomIndex = Math.floor(Math.random() * gameState.intervalOptions.length);
+            const intervalRatio = gameState.intervalOptions[randomIndex];
+            const intervalMs = Math.round(intervalRatio * gameState.baseBeatMs); // 计算实际毫秒值
+            return { ratio: intervalRatio, ms: intervalMs };
+        }
+
+        // 更新时间线（可视化节拍间隔）
+        function updateTimeline(isPlayer = false) {
+            timeline.innerHTML = '';
+            intervalLabels.innerHTML = '';
+            const sequenceToShow = isPlayer ? gameState.playerSequence : gameState.sequenceMs;
+            const ratioSequence = isPlayer ? null : gameState.sequence;
+            const maxInterval = Math.max(...sequenceToShow, gameState.baseBeatMs); // 用于归一化显示
+
+            // 第一个节拍点
+            const firstBeat = document.createElement('div');
+            firstBeat.className = 'beat-indicator bg-primary';
+            timeline.appendChild(firstBeat);
+
+            // 第一个标签占位（空）
+            const firstLabel = document.createElement('div');
+            firstLabel.className = 'interval-label w-0';
+            intervalLabels.appendChild(firstLabel);
+
+            // 循环添加后续间隔条、节拍点和标签
+            sequenceToShow.forEach((interval, index) => {
+                // 间隔条（宽度按比例计算，确保视觉差异）
+                const bar = document.createElement('div');
+                const width = Math.max(10, (interval / maxInterval) * 100); // 最小宽度10px，避免太窄
+                bar.className = `timeline-bar flex-1 ${isPlayer ? 'bg-secondary/50' : 'bg-primary/30'}`;
+                bar.style.minWidth = `${width}px`;
+                timeline.appendChild(bar);
+
+                // 节拍点
+                const beat = document.createElement('div');
+                beat.className = 'beat-indicator bg-primary';
+                timeline.appendChild(beat);
+
+                // 间隔标签（仅游戏序列显示，玩家序列不显示）
+                const label = document.createElement('div');
+                label.className = 'interval-label flex-1';
+                if (!isPlayer && ratioSequence) {
+                    label.textContent = intervalText[ratioSequence[index]] || '';
+                }
+                intervalLabels.appendChild(label);
+            });
+
+            // 更新序列长度显示
+            sequenceLength.textContent = `长度: ${sequenceToShow.length + 1}`;
+        }
+
+        // 播放游戏演示序列
+        function playSequence() {
+            gameState.isPlayerTurn = false;
+            gameStatus.textContent = '记住这个节奏...';
+            updateTimeline(); // 显示游戏序列
+            activateBeat(); // 播放第一个节拍
+
+            let index = 0;
+            const playNextBeat = () => {
+                if (index < gameState.sequenceMs.length && gameState.isPlaying) {
+                    // 按序列间隔播放下一个节拍
+                    setTimeout(() => {
+                        activateBeat();
+                        index++;
+                        playNextBeat();
+                    }, gameState.sequenceMs[index]);
+                } else {
+                    // 序列播放完毕，切换到玩家回合
+                    setTimeout(() => {
+                        gameState.isPlayerTurn = true;
+                        gameState.isFirstTap = true;
+                        gameState.playerSequence = [];
+                        gameStatus.textContent = '轮到你了！';
+                        beatButton.classList.add('bounce-animation'); // 按钮弹跳提示
+                    }, 1000); // 间隔1秒，给玩家准备时间
+                }
+            };
+            playNextBeat();
+        }
+
+        // 检查玩家输入（核心修改：用固定误差值判断）
+        function checkPlayerInput() {
+            // 1. 玩家完成整个序列：进入得分和下一轮
+            if (gameState.playerSequence.length === gameState.sequenceMs.length) {
+                return calculateScoreAndProceed();
+            }
+
+            // 2. 检查当前输入的间隔是否在固定误差范围内
+            const currentIndex = gameState.playerSequence.length - 1;
+            const targetInterval = gameState.sequenceMs[currentIndex]; // 游戏目标间隔
+            const playerInterval = gameState.playerSequence[currentIndex]; // 玩家输入间隔
+            const difference = Math.abs(playerInterval - targetInterval); // 误差绝对值
+
+            // 固定误差判断：误差 > 固定允许值 → 游戏结束
+            if (difference > gameState.fixedTolerance) {
+                gameOver(`误差太大！目标: ${targetInterval}ms (允许±${gameState.fixedTolerance}ms), 你的: ${playerInterval}ms`);
+                return false;
+            }
+
+            // 误差在范围内，继续等待玩家输入
+            return true;
+        }
+
+        // 计算得分并进入下一轮（难度递进：加快速度+减小固定误差）
+        function calculateScoreAndProceed() {
+            gameState.isPlayerTurn = false;
+            beatButton.classList.remove('bounce-animation'); // 停止弹跳提示
+
+            // 1. 计算本轮得分（误差越小，得分越高）
+            let roundScore = 0;
+            gameState.sequenceMs.forEach((target, index) => {
+                const player = gameState.playerSequence[index];
+                const difference = Math.abs(player - target);
+                // 得分公式：基础100分 - 误差占固定误差的比例×100（误差0得100，误差满得0）
+                const scorePerBeat = Math.max(0, 100 - Math.floor((difference / gameState.fixedTolerance) * 100));
+                roundScore += scorePerBeat;
+            });
+
+            // 2. 乘以等级系数（等级越高，得分倍数越高）
+            roundScore = Math.floor(roundScore * gameState.level);
+            gameState.score += roundScore;
+            scoreDisplay.textContent = gameState.score; // 更新分数显示
+            gameStatus.textContent = `太棒了！得分: +${roundScore}`;
+
+            // 3. 准备下一轮（每3关提升难度）
+            setTimeout(() => {
+                // 难度递进逻辑：每3关 → 加快速度 + 减小固定误差（不低于最小值）
+                if (gameState.sequence.length % 3 === 0) {
+                    gameState.level++;
+                    levelDisplay.textContent = gameState.level;
+
+                    // ① 加快基础速度（最低600ms/拍，保证反应时间）
+                    gameState.baseBeatMs = Math.max(600, gameState.baseBeatMs - 60);
+
+                    // ② 减小固定误差（最低30ms，避免无法操作）
+                    if (gameState.fixedTolerance > gameState.minTolerance) {
+                        gameState.fixedTolerance = Math.max(gameState.minTolerance, gameState.fixedTolerance - 5);
+                        fixedToleranceDisplay.textContent = gameState.fixedTolerance; // 更新误差显示
+                    }
+
+                    // 提示玩家难度变化
+                    gameStatus.textContent = `升级！第${gameState.level}级（速度加快，误差: ±${gameState.fixedTolerance}ms）`;
+                }
+
+                // 4. 添加新的节拍间隔，进入下一轮
+                const newInterval = generateBeatInterval();
+                gameState.sequence.push(newInterval.ratio);
+                gameState.sequenceMs.push(newInterval.ms);
+                gameState.playerSequence = []; // 重置玩家序列
+
+                // 5. 播放新序列
+                setTimeout(playSequence, 1500);
+            }, 1500);
+
+            return true;
+        }
+
+        // 游戏结束处理
+        function gameOver(reason) {
+            gameState.isPlaying = false;
+            gameState.isPlayerTurn = false;
+            beatButton.classList.remove('bounce-animation');
+            gameStatus.textContent = `游戏结束: ${reason || '出错了'}`;
+
+            // 失败视觉反馈：按钮变红并脉冲
+            beatButton.classList.add('pulse-effect');
+            beatButton.style.backgroundColor = '#ef4444';
+            setTimeout(() => {
+                beatButton.classList.remove('pulse-effect');
+                beatButton.style.backgroundColor = ''; // 恢复原颜色
+            }, 1000);
+
+            // 显示重新开始和重置按钮
+            startButton.classList.remove('hidden');
+            resetButton.classList.remove('hidden');
+            startButton.innerHTML = '<i class="fa fa-play mr-2"></i> 再玩一次';
+        }
+
+        // 开始游戏
+        function startGame() {
+            // 激活音频（需用户交互，符合浏览器政策）
+            if (!audioContext) {
+                initAudio();
+            } else if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+
+            // 重置游戏状态（确保每次开始都是初始状态）
+            const firstInterval = generateBeatInterval();
+            gameState.sequence = [firstInterval.ratio];
+            gameState.sequenceMs = [firstInterval.ms];
+            gameState.playerSequence = [];
+            gameState.score = 0;
+            gameState.level = 1;
+            gameState.fixedTolerance = 100; // 重置为初始固定误差
+            gameState.baseBeatMs = 1000;
+            gameState.isPlaying = true;
+
+            // 更新UI显示
+            scoreDisplay.textContent = '0';
+            levelDisplay.textContent = '1';
+            fixedToleranceDisplay.textContent = gameState.fixedTolerance; // 同步误差显示
+            startButton.classList.add('hidden'); // 隐藏开始按钮
+            resetButton.classList.remove('hidden'); // 显示重置按钮
+
+            // 开始播放第一个序列
+            playSequence();
+        }
+
+        // 重置游戏（回到初始状态）
+        function resetGame() {
+            gameState.isPlaying = false;
+            gameState.isPlayerTurn = false;
+            gameState.sequence = [];
+            gameState.sequenceMs = [];
+            gameState.playerSequence = [];
+            gameState.score = 0;
+            gameState.level = 1;
+            gameState.fixedTolerance = 100; // 重置固定误差
+
+            // 更新UI
+            scoreDisplay.textContent = '0';
+            levelDisplay.textContent = '1';
+            fixedToleranceDisplay.textContent = gameState.fixedTolerance;
+            gameStatus.textContent = '点击开始游戏';
+            timeline.innerHTML = '';
+            intervalLabels.innerHTML = '';
+            sequenceLength.textContent = '长度: 0';
+            startButton.classList.remove('hidden');
+            resetButton.classList.add('hidden');
+            beatButton.classList.remove('bounce-animation');
+            startButton.innerHTML = '<i class="fa fa-play mr-2"></i> 开始';
+        }
+
+        // 节拍按钮点击处理（兼容鼠标和触摸）
+        function handleBeatButtonClick() {
+            if (!gameState.isPlaying) return; // 游戏未开始时不响应
+
+            // 按钮视觉+音效反馈
+            activateBeat();
+
+            // 仅在玩家回合处理输入
+            if (gameState.isPlayerTurn) {
+                const currentTime = Date.now();
+                if (gameState.isFirstTap) {
+                    // 玩家第一次点击：仅记录时间，不计算间隔
+                    gameState.lastPlayerTapTime = currentTime;
+                    gameState.isFirstTap = false;
+                } else {
+                    // 计算与上一次点击的间隔，加入玩家序列
+                    const interval = currentTime - gameState.lastPlayerTapTime;
+                    gameState.playerSequence.push(interval);
+                    gameState.lastPlayerTapTime = currentTime;
+
+                    // 更新玩家序列的时间线显示
+                    updateTimeline(true);
+
+                    // 检查输入是否正确
+                    checkPlayerInput();
+                }
+            }
+        }
+
+        // 事件监听器
+        startButton.addEventListener('click', startGame);
+        resetButton.addEventListener('click', resetGame);
+        beatButton.addEventListener('click', handleBeatButtonClick);
+
+        // 触摸设备支持（避免触摸和点击事件重复触发）
+        beatButton.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // 阻止默认触摸行为（如点击）
+            handleBeatButtonClick();
+        });
+
+        // 初始化音频（需用户首次交互激活，仅执行一次）
+        document.body.addEventListener('click', initAudio, { once: true });
+    </script>
+</body>
+</html>

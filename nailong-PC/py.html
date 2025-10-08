@@ -1,0 +1,1396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工匠大师 | 物品合成游戏</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#8B5CF6', secondary: '#EC4899',
+                        wood: '#D4A76A', metal: '#9CA3AF', stone: '#6B7280', cloth: '#F3E8FF'
+                    },
+                    fontFamily: { craft: ['"Work Sans"', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto { content-visibility: auto; }
+            .item-hover { transition: all 0.2s ease; }
+            .item-hover:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(139, 92, 246, 0.2); }
+            .new-item { animation: pulse 1.5s infinite; }
+            @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0.4); } 70% { box-shadow: 0 0 0 10px rgba(236, 72, 153, 0); } 100% { box-shadow: 0 0 0 0 rgba(236, 72, 153, 0); } }
+            .crafting-animation { animation: crafting 1s ease-in-out; }
+            @keyframes crafting { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+            .recipe-selected { border-color: #8B5CF6; background-color: rgba(139, 92, 246, 0.05); font-weight: 500; }
+            .material-required { color: #8B5CF6; font-weight: 500; }
+            .material-missing { color: #EF4444; text-decoration: line-through; }
+            .order-completed { background-color: rgba(16, 185, 129, 0.1); border-color: #10B981; }
+            .xp-bar { height: 6px; background: linear-gradient(90deg, #8B5CF6 var(--xp-percent, 0%), #E5E7EB var(--xp-percent, 0%)); }
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-50 font-craft text-gray-800 min-h-screen flex flex-col">
+    <!-- 游戏标题栏（添加等级和金币） -->
+    <header class="bg-primary text-white shadow-md">
+        <div class="container mx-auto px-4 py-4 flex flex-wrap justify-between items-center">
+            <div class="flex items-center gap-3">
+                <i class="fa fa-wrench text-2xl"></i>
+                <h1 class="text-2xl md:text-3xl font-bold">工匠大师</h1>
+            </div>
+            <div class="flex items-center gap-4 mt-3 sm:mt-0">
+                <!-- 等级系统 -->
+                <div class="bg-white/20 px-3 py-1.5 rounded-lg">
+                    <div class="flex items-center gap-2">
+                        <i class="fa fa-star text-yellow-300"></i>
+                        <span>等级 <span id="playerLevel">1</span></span>
+                    </div>
+                    <div class="xp-bar w-full rounded-full mt-1" id="xpBar"></div>
+                    <div class="text-xs text-right mt-1">
+                        <span id="currentXp">0</span>/<span id="nextLevelXp">100</span>
+                    </div>
+                </div>
+                
+                <!-- 金币系统 -->
+                <div class="flex items-center gap-2 bg-white/20 px-3 py-1.5 rounded-lg">
+                    <i class="fa fa-coins text-yellow-300"></i>
+                    <span id="playerCoins">50</span>
+                </div>
+                
+                <div class="flex items-center gap-6">
+                    <div class="flex items-center gap-2">
+                        <i class="fa fa-cube text-yellow-300"></i>
+                        <span id="discoveredCount">已解锁: 8/50</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="helpBtn" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                            <i class="fa fa-question-circle"></i> 帮助
+                        </button>
+                        <button id="inventoryBtn" class="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1">
+                            <i class="fa fa-briefcase"></i> 商店
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 分类导航 -->
+    <nav class="bg-white border-b border-gray-200 sticky top-0 z-10">
+        <div class="container mx-auto px-4">
+            <div class="flex overflow-x-auto py-2 gap-2 md:gap-4 hide-scrollbar">
+                <button class="category-btn active whitespace-nowrap px-3 py-1.5 rounded-full bg-primary/10 text-primary font-medium text-sm" data-category="all">全部物品</button>
+                <button class="category-btn whitespace-nowrap px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm" data-category="原材料"><i class="fa fa-pagelines mr-1"></i> 原材料</button>
+                <button class="category-btn whitespace-nowrap px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm" data-category="工具"><i class="fa fa-wrench mr-1"></i> 工具</button>
+                <button class="category-btn whitespace-nowrap px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm" data-category="半成品"><i class="fa fa-cog mr-1"></i> 半成品</button>
+                <button class="category-btn whitespace-nowrap px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm" data-category="家具"><i class="fa fa-home mr-1"></i> 家具</button>
+                <button class="category-btn whitespace-nowrap px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm" data-category="建筑"><i class="fa fa-building mr-1"></i> 建筑</button>
+                <button class="category-btn whitespace-nowrap px-3 py-1.5 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium text-sm" data-category="装饰"><i class="fa fa-paint-brush mr-1"></i> 装饰</button>
+            </div>
+        </div>
+    </nav>
+
+    <!-- 主要游戏区域 -->
+    <main class="flex-grow container mx-auto px-4 py-6 flex flex-col lg:flex-row gap-6">
+        <!-- 物品库 -->
+        <section class="lg:w-1/4 bg-white rounded-xl shadow-md p-4 order-2 lg:order-1">
+            <div class="relative mb-4">
+                <input type="text" id="itemSearch" placeholder="搜索物品..." 
+                    class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-primary/50 pl-10">
+                <i class="fa fa-search absolute left-3 top-3 text-gray-400"></i>
+            </div>
+            
+            <h2 class="text-lg font-bold mb-3 flex items-center">
+                <i class="fa fa-th-large text-primary mr-2"></i> 物品库
+            </h2>
+            
+            <div id="itemsContainer" class="grid grid-cols-2 sm:grid-cols-3 gap-2 max-h-[calc(100vh-320px)] overflow-y-auto pr-1">
+                <!-- 物品将通过JS动态生成 -->
+            </div>
+        </section>
+        
+        <!-- 合成区域 -->
+        <section class="lg:w-2/4 bg-white rounded-xl shadow-md p-5 order-1 lg:order-2">
+            <h2 class="text-lg font-bold mb-4 flex items-center">
+                <i class="fa fa-cogs text-secondary mr-2"></i> 工作台
+            </h2>
+            
+            <!-- 配方选择面板 -->
+            <div class="mb-4">
+                <h3 class="text-md font-semibold mb-2 flex items-center">
+                    <i class="fa fa-list-ul text-primary mr-2"></i> 选择制作配方
+                </h3>
+                <div id="recipeSelectContainer" class="bg-gray-50 rounded-lg border border-gray-200 p-2 max-h-[120px] overflow-y-auto">
+                    <p id="noRecipeTip" class="text-gray-500 text-sm text-center py-3 italic">
+                        暂无可制作配方，请先解锁材料/工具
+                    </p>
+                    <div id="recipeList" class="space-y-1 hidden">
+                        <!-- 配方选项将通过JS动态生成 -->
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 当前选中配方的材料需求提示 -->
+            <div id="selectedRecipeHint" class="bg-purple-50 border border-purple-100 rounded-lg p-3 mb-4 text-sm hidden">
+                <div class="flex items-start gap-2">
+                    <i class="fa fa-check-circle text-green-500 mt-0.5"></i>
+                    <div>
+                        <p class="font-medium">当前选择：<span id="selectedRecipeName">桌子</span></p>
+                        <p class="mt-1 text-xs">需要材料：<span id="selectedRecipeMaterials">木板×3（已添加0/3）、钉子×2（已添加0/2）</span></p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 合成格子 -->
+            <div class="grid grid-cols-3 gap-3 mb-5">
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="1"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="2"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="3"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="4"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="5"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="6"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="7"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="8"></div>
+                <div class="crafting-slot aspect-square bg-gray-50 rounded-lg border-2 border-dashed border-gray-300 flex items-center justify-center" data-slot="9"></div>
+            </div>
+            
+            <!-- 合成按钮和结果 -->
+            <div class="flex flex-col items-center">
+                <button id="craftBtn" class="bg-primary hover:bg-primary/90 text-white font-bold py-3 px-8 rounded-lg transition-all transform hover:scale-105 active:scale-95 mb-6 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100" disabled>
+                    <i class="fa fa-wrench mr-2"></i> 开始制作（请先选择配方）
+                </button>
+                
+                <div id="resultArea" class="w-full max-w-xs h-24 border-2 border-dashed border-gray-300 rounded-lg bg-gray-50 flex items-center justify-center">
+                    <span class="text-gray-400">制作结果将显示在这里</span>
+                </div>
+            </div>
+            
+            <!-- 最近制作 -->
+            <div class="mt-6">
+                <h3 class="text-md font-semibold mb-2 flex items-center">
+                    <i class="fa fa-history text-gray-500 mr-2"></i> 最近制作
+                </h3>
+                <div id="recentCrafts" class="flex flex-wrap gap-2 max-h-20 overflow-y-auto">
+                    <!-- 最近制作的物品将在这里显示 -->
+                </div>
+            </div>
+        </section>
+        
+        <!-- 物品详情和订单系统 -->
+        <section class="lg:w-1/4 bg-white rounded-xl shadow-md p-4 order-3">
+            <!-- 订单系统 -->
+            <div class="mb-6">
+                <h2 class="text-lg font-bold mb-3 flex items-center">
+                    <i class="fa fa-file-text-o text-secondary mr-2"></i> 订单
+                </h2>
+                <div id="ordersContainer" class="bg-gray-50 rounded-lg p-3 max-h-[200px] overflow-y-auto mb-3">
+                    <!-- 订单将在这里显示 -->
+                </div>
+                <button id="refreshOrdersBtn" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 py-1.5 rounded-lg text-sm transition-colors">
+                    <i class="fa fa-refresh mr-1"></i> 刷新订单
+                </button>
+            </div>
+            
+            <h2 class="text-lg font-bold mb-4 flex items-center">
+                <i class="fa fa-info-circle text-primary mr-2"></i> 物品详情
+            </h2>
+            
+            <div id="itemDetail" class="p-4 bg-gray-50 rounded-lg min-h-[150px]">
+                <p class="text-gray-500 text-center italic">选择一个物品查看详情</p>
+            </div>
+            
+            <h3 class="text-md font-semibold mt-6 mb-3 flex items-center">
+                <i class="fa fa-book text-secondary mr-2"></i> 可制作配方
+            </h3>
+            <div id="craftingRecipes" class="bg-gray-50 rounded-lg p-3 max-h-[200px] overflow-y-auto">
+                <p class="text-gray-500 text-sm italic text-center">选择一个物品查看它能制作的东西</p>
+            </div>
+        </section>
+    </main>
+    
+    <!-- 帮助模态框 -->
+    <div id="helpModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 p-6 transform transition-all">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-primary">游戏帮助</h2>
+                <button id="closeHelpBtn" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            <div class="space-y-4 text-sm">
+                <div>
+                    <h3 class="font-semibold text-lg mb-1">如何玩</h3>
+                    <p>1. 完成订单获得金币和经验；<br>2. 提升等级解锁更多配方；<br>3. 使用材料制作物品，满足订单需求；<br>4. 金币可在背包中购买原材料。</p>
+                </div>
+                <div>
+                    <h3 class="font-semibold text-lg mb-1">基本操作</h3>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li>在配方面板点击选择要制作的物品</li>
+                        <li>拖放材料到工作台（需与配方完全一致）</li>
+                        <li>点击"开始制作"按钮进行合成</li>
+                        <li>完成订单获得奖励并提升等级</li>
+                        <li>在背包中可购买各种原材料</li>
+                    </ul>
+                </div>
+            </div>
+            <button id="gotItBtn" class="mt-6 bg-primary hover:bg-primary/90 text-white font-bold py-2 px-6 rounded-lg transition-colors w-full">
+                明白了
+            </button>
+        </div>
+    </div>
+    
+    <!-- 新物品解锁提示 -->
+    <div id="discoveryToast" class="fixed bottom-6 right-6 bg-secondary text-white p-4 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-40 max-w-xs">
+        <div class="flex items-start gap-3">
+            <i class="fa fa-trophy text-xl mt-1"></i>
+            <div>
+                <h3 class="font-bold text-lg">新物品解锁！</h3>
+                <p>你成功制作了: <span class="font-bold" id="newItemName"></span></p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 等级提升提示 -->
+    <div id="levelUpToast" class="fixed bottom-6 right-6 bg-green-600 text-white p-4 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-40 max-w-xs">
+        <div class="flex items-start gap-3">
+            <i class="fa fa-star text-xl mt-1"></i>
+            <div>
+                <h3 class="font-bold text-lg">等级提升！</h3>
+                <p>你现在是 <span class="font-bold" id="levelUpNewLevel">2</span> 级工匠了！</p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 订单完成提示 -->
+    <div id="orderCompleteToast" class="fixed bottom-6 right-6 bg-blue-600 text-white p-4 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-40 max-w-xs">
+        <div class="flex items-start gap-3">
+            <i class="fa fa-check-circle text-xl mt-1"></i>
+            <div>
+                <h3 class="font-bold text-lg">订单完成！</h3>
+                <p>获得奖励: <span class="font-bold" id="orderRewards">50金币 + 30经验</span></p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 购买成功提示 -->
+    <div id="purchaseToast" class="fixed bottom-6 right-6 bg-green-600 text-white p-4 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-300 z-40 max-w-xs">
+        <div class="flex items-start gap-3">
+            <i class="fa fa-shopping-cart text-xl mt-1"></i>
+            <div>
+                <h3 class="font-bold text-lg">购买成功！</h3>
+                <p>获得了: <span class="font-bold" id="purchasedItem">木材×5</span></p>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 背包模态框 -->
+    <div id="inventoryModal" class="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4 p-6 max-h-[90vh] flex flex-col">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-primary">我的背包</h2>
+                <button id="closeInventoryBtn" class="text-gray-500 hover:text-gray-700">
+                    <i class="fa fa-times text-xl"></i>
+                </button>
+            </div>
+            
+            <!-- 购买原材料区域 -->
+            <div class="mb-6 bg-gray-50 p-4 rounded-lg">
+                <h3 class="text-lg font-semibold mb-3 flex items-center">
+                    <i class="fa fa-shopping-bag text-green-600 mr-2"></i> 购买原材料
+                </h3>
+                <div id="shopContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <!-- 可购买的原材料将在这里显示 -->
+                </div>
+            </div>
+            
+            <div class="flex-grow overflow-y-auto">
+                <h3 class="text-lg font-semibold mb-3 flex items-center">
+                    <i class="fa fa-cubes text-primary mr-2"></i> 我的物品
+                </h3>
+                <div id="inventoryContainer" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                    <!-- 背包物品将在这里显示 -->
+                </div>
+            </div>
+            
+            <button id="closeInventoryBtn2" class="mt-6 bg-primary hover:bg-primary/90 text-white font-bold py-2 px-6 rounded-lg transition-colors w-full">
+                关闭
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏数据
+        const itemsData = {
+            // 原材料
+            "木材": { description: "从树上砍伐下来的原木", category: "原材料", icon: "fa-tree", color: "wood", isInitial: true, quantity: 10, value: 5, buyPrice: 8 },
+            "石头": { description: "从地面采集的石头", category: "原材料", icon: "fa-cube", color: "stone", isInitial: true, quantity: 8, value: 8, buyPrice: 12 },
+            "金属": { description: "将矿石冶炼后得到的金属", category: "原材料", icon: "fa-diamond", color: "metal", isInitial: true, quantity: 5, value: 15, buyPrice: 20 },
+            "布料": { description: "由纤维编织而成的材料", category: "原材料", icon: "fa-scissors", color: "cloth", isInitial: true, quantity: 6, value: 10, buyPrice: 15 },
+            "植物": { description: "从野外采集的植物", category: "原材料", icon: "fa-leaf", color: "green-500", isInitial: true, quantity: 7, value: 6, buyPrice: 10 },
+            "塑料": { description: "从商场买来的的塑料", category: "原材料", icon: "fa-cube", color: "green-500", isInitial: true, quantity: 4, value: 12, buyPrice: 18 },
+
+            // 半成品
+            "木板": { description: "将木材切割后得到的板材", category: "半成品", icon: "fa-th", color: "wood", recipe: { ingredients: ["木材"], tool: "锯子", outputQuantity: 2 }, quantity: 0, value: 12, xp: 10 },
+            "钉子": { description: "小金属钉，用于连接木材", category: "半成品", icon: "fa-thumb-tack", color: "metal", recipe: { ingredients: ["金属"], tool: "锤子", outputQuantity: 1 }, quantity: 0, value: 20, xp: 15 },
+            "绳子": { description: "由纤维编织而成的绳子", category: "半成品", icon: "fa-link", color: "brown-600", recipe: { ingredients: ["布料"], tool: "剪刀", outputQuantity: 1 }, quantity: 0, value: 18, xp: 12 },
+            "纸张": { description: "由植物纤维制成的薄片", category: "半成品", icon: "fa-file-text-o", color: "gray-200", recipe: { ingredients: ["植物"], tool: "研钵", outputQuantity: 1 }, quantity: 0, value: 15, xp: 10 },
+            "砖块": { description: "由石头制成的砖头", category: "半成品", icon: "fa-brick", color: "gray-200", recipe: { ingredients: ["石头"], tool: "熔炉", outputQuantity: 1 }, quantity: 0, value: 25, xp: 20 },
+            "轮胎": { description: "由塑料制成，用于汽车", category: "半成品", icon: "fa-circle-o", color: "gray-200", recipe: { ingredients: ["塑料" , "塑料" , "塑料" , "金属"], outputQuantity: 1 }, quantity: 0, value: 50, xp: 30 },
+            "电子元件": { description: "由塑料制成，用于做各种电子物品", category: "半成品", icon: "fa-elec", color: "gray-200", recipe: { ingredients: ["塑料" , "塑料" , "金属" , "金属"], outputQuantity: 1 }, quantity: 0, value: 150, xp: 30 },
+            
+            // 工具
+            "斧头": { description: "用于砍伐树木的工具", category: "工具", icon: "fa-axe", color: "metal", recipe: { ingredients: ["木材", "金属"], outputQuantity: 1 }, durability: 10, quantity: 0, value: 80, xp: 40 },
+            "锤子": { description: "用于敲打钉子的工具", category: "工具", icon: "fa-hammer", color: "metal", recipe: { ingredients: ["木材", "金属"], outputQuantity: 1 }, durability: 15, quantity: 0, value: 70, xp: 35 },
+            "锯子": { description: "用于切割木材的工具", category: "工具", icon: "fa-saw", color: "metal", recipe: { ingredients: ["木材", "金属"], outputQuantity: 1 }, durability: 8, quantity: 0, value: 75, xp: 38 },
+            "剪刀": { description: "用于裁剪布料的工具", category: "工具", icon: "fa-scissors", color: "metal", recipe: { ingredients: ["金属" , "金属"], outputQuantity: 1 }, durability: 12, quantity: 0, value: 60, xp: 30 },
+            "熔炉": { description: "用于冶炼矿石的设备", category: "工具", icon: "fa-fire", color: "stone", recipe: { ingredients: ["石头", "石头", "石头", "石头", "木材"], outputQuantity: 1 }, quantity: 0, value: 120, xp: 60 },
+            "研钵": { description: "用于磨细矿石的设备", category: "工具", icon: "fa-lab", color: "stone", recipe: { ingredients: ["石头", "石头", "石头"], outputQuantity: 1 }, quantity: 0, value: 120, xp: 60 },
+            "钻头": { description: "用于打洞的设备", category: "工具", icon: "fa-lab", color: "metal", recipe: { ingredients: ["金属" , "电子元件"], outputQuantity: 1 }, quantity: 0, value: 120, xp: 260 },
+            
+
+            // 家具
+            "桌子": { description: "有平面和支柱的家具", category: "家具", icon: "fa-table", color: "wood", recipe: { ingredients: ["木板", "木板", "木板", "钉子", "钉子"], outputQuantity: 1 }, quantity: 0, value: 150, xp: 70 },
+            "椅子": { description: "有靠背的坐具", category: "家具", icon: "fa-chair", color: "wood", recipe: { ingredients: ["木板", "木板", "木板", "钉子"], outputQuantity: 1 }, quantity: 0, value: 120, xp: 50 },
+            "书架": { description: "用于存放书籍的家具", category: "家具", icon: "fa-book", color: "wood", recipe: { ingredients: ["木板", "木板", "木板", "木板", "钉子", "钉子"], outputQuantity: 1 }, quantity: 0, value: 200, xp: 90 },
+            
+            // 建筑
+            "墙壁": { description: "用于分隔空间的建筑结构", category: "建筑", icon: "fa-wall", color: "stone", recipe: { ingredients: ["砖块" , "砖块"], outputQuantity: 1 }, quantity: 0, value: 80, xp: 40 },
+            "门": { description: "用于进出房间的装置", category: "建筑", icon: "fa-door-open", color: "wood", recipe: { ingredients: ["木板", "木板", "金属"], outputQuantity: 1 }, quantity: 0, value: 180, xp: 80 },
+            "玻璃": { description: "透明的坚硬材料", category: "建筑", icon: "fa-square-o", color: "blue-100", recipe: { ingredients: ["石头"], tool: "熔炉", outputQuantity: 1 }, quantity: 0, value: 60, xp: 30 },
+            
+            // 装饰
+            "画框": { description: "用于装裱画作的框架", category: "装饰", icon: "fa-picture-o", color: "wood", recipe: { ingredients: ["木板", "钉子"], outputQuantity: 1 }, quantity: 0, value: 90, xp: 45 },
+            "蜡烛": { description: "用于照明的物品", category: "装饰", icon: "fa-lightbulb-o", color: "yellow-200", recipe: { ingredients: ["植物", "绳子"], outputQuantity: 1 }, quantity: 0, value: 75, xp: 35 },
+            "地毯": { description: "铺在地板上的装饰品", category: "装饰", icon: "fa-square", color: "cloth", recipe: { ingredients: ["布料", "布料"], outputQuantity: 1 }, quantity: 0, value: 120, xp: 50 }
+        };
+
+        // 游戏状态
+        const gameState = {
+            discoveredItems: new Set(),
+            selectedItem: null,
+            selectedRecipe: null,
+            craftingSlots: {}, 
+            slotItemCounts: {}, 
+            recentCrafts: [],
+            activeCategory: "all",
+            searchQuery: "",
+            // 等级系统
+            level: 1,
+            currentXp: 0,
+            nextLevelXp: 100,
+            coins: 50,
+            // 订单系统
+            orders: [],
+            maxOrders: 3
+        };
+
+        // DOM元素
+        const elements = {
+            itemsContainer: document.getElementById('itemsContainer'),
+            itemDetail: document.getElementById('itemDetail'),
+            craftingRecipes: document.getElementById('craftingRecipes'),
+            craftBtn: document.getElementById('craftBtn'),
+            resultArea: document.getElementById('resultArea'),
+            discoveredCount: document.getElementById('discoveredCount'),
+            itemSearch: document.getElementById('itemSearch'),
+            categoryBtns: document.querySelectorAll('.category-btn'),
+            helpBtn: document.getElementById('helpBtn'),
+            helpModal: document.getElementById('helpModal'),
+            closeHelpBtn: document.getElementById('closeHelpBtn'),
+            gotItBtn: document.getElementById('gotItBtn'),
+            discoveryToast: document.getElementById('discoveryToast'),
+            newItemName: document.getElementById('newItemName'),
+            recentCrafts: document.getElementById('recentCrafts'),
+            inventoryBtn: document.getElementById('inventoryBtn'),
+            inventoryModal: document.getElementById('inventoryModal'),
+            closeInventoryBtn: document.getElementById('closeInventoryBtn'),
+            closeInventoryBtn2: document.getElementById('closeInventoryBtn2'),
+            inventoryContainer: document.getElementById('inventoryContainer'),
+            recipeSelectContainer: document.getElementById('recipeSelectContainer'),
+            noRecipeTip: document.getElementById('noRecipeTip'),
+            recipeList: document.getElementById('recipeList'),
+            selectedRecipeHint: document.getElementById('selectedRecipeHint'),
+            selectedRecipeName: document.getElementById('selectedRecipeName'),
+            selectedRecipeMaterials: document.getElementById('selectedRecipeMaterials'),
+            // 等级系统元素
+            playerLevel: document.getElementById('playerLevel'),
+            currentXp: document.getElementById('currentXp'),
+            nextLevelXp: document.getElementById('nextLevelXp'),
+            xpBar: document.getElementById('xpBar'),
+            playerCoins: document.getElementById('playerCoins'),
+            // 订单系统元素
+            ordersContainer: document.getElementById('ordersContainer'),
+            refreshOrdersBtn: document.getElementById('refreshOrdersBtn'),
+            levelUpToast: document.getElementById('levelUpToast'),
+            levelUpNewLevel: document.getElementById('levelUpNewLevel'),
+            orderCompleteToast: document.getElementById('orderCompleteToast'),
+            orderRewards: document.getElementById('orderRewards'),
+            // 购买系统元素
+            shopContainer: document.getElementById('shopContainer'),
+            purchaseToast: document.getElementById('purchaseToast'),
+            purchasedItem: document.getElementById('purchasedItem')
+        };
+
+        // 初始化游戏
+        function initGame() {
+            // 初始解锁物品
+            for (const [name, data] of Object.entries(itemsData)) {
+                if (data.isInitial) gameState.discoveredItems.add(name);
+            }
+
+            // 生成初始订单
+            generateOrders();
+            
+            // 更新UI
+            renderItems();
+            updateDiscoveredCount();
+            loadAvailableRecipes();
+            updateLevelDisplay();
+            setupEventListeners();
+            updateInventory();
+        }
+
+        // 渲染物品库
+        function renderItems() {
+            elements.itemsContainer.innerHTML = '';
+            
+            const filteredItems = Object.entries(itemsData)
+                .filter(([name, data]) => {
+                    if (!gameState.discoveredItems.has(name)) return false;
+                    if (gameState.activeCategory !== "all" && data.category !== gameState.activeCategory) return false;
+                    if (gameState.searchQuery && !name.toLowerCase().includes(gameState.searchQuery.toLowerCase())) return false;
+                    return true;
+                });
+            
+            filteredItems.forEach(([name, data]) => {
+                const itemCard = document.createElement('div');
+                itemCard.className = `bg-white rounded-lg p-2 border border-gray-200 item-hover cursor-pointer flex flex-col items-center justify-center`;
+                itemCard.setAttribute('draggable', 'true');
+                itemCard.setAttribute('data-item', name);
+                
+                const isNew = gameState.recentCrafts.includes(name) && gameState.recentCrafts.indexOf(name) < 3;
+                const quantity = data.quantity > 0 ? `<span class="absolute bottom-0 right-0 bg-primary/80 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">${data.quantity}</span>` : '';
+                
+                itemCard.innerHTML = `
+                    <div class="relative w-full flex justify-center">
+                        <i class="fa ${data.icon} text-${data.color} text-xl mb-1 ${isNew ? 'new-item' : ''}"></i>
+                        ${quantity}
+                    </div>
+                    <span class="text-xs text-center truncate">${name}</span>
+                `;
+                
+                itemCard.addEventListener('click', () => showItemDetail(name, data));
+                itemCard.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', name);
+                    itemCard.classList.add('opacity-50');
+                });
+                itemCard.addEventListener('dragend', () => itemCard.classList.remove('opacity-50'));
+                
+                elements.itemsContainer.appendChild(itemCard);
+            });
+        }
+
+        // 显示物品详情
+        function showItemDetail(name, data) {
+            gameState.selectedItem = name;
+            const itemData = data || itemsData[name];
+            
+            let recipeHtml = '';
+            if (itemData.recipe) {
+                const ingredientCounts = {};
+                itemData.recipe.ingredients.forEach(ing => {
+                    ingredientCounts[ing] = (ingredientCounts[ing] || 0) + 1;
+                });
+                const formattedIngredients = Object.entries(ingredientCounts)
+                    .map(([ing, count]) => `${ing}×${count}`)
+                    .join(', ');
+                
+                const toolHtml = itemData.recipe.tool ? 
+                    `<div class="mt-1 text-xs">需要工具: <span class="bg-gray-200 px-1.5 py-0.5 rounded">${itemData.recipe.tool}</span></div>` : '';
+                const outputHtml = itemData.recipe.outputQuantity > 1 ? 
+                    `<div class="mt-1 text-xs text-green-600">产出数量: ${itemData.recipe.outputQuantity}个</div>` : '';
+                const valueHtml = `<div class="mt-1 text-xs text-blue-600">价值: ${itemData.value}金币</div>`;
+                const xpHtml = itemData.xp ? `<div class="mt-1 text-xs text-purple-600">经验: ${itemData.xp}点</div>` : '';
+                
+                recipeHtml = `
+                    <div class="mt-3 pt-3 border-t border-gray-200">
+                        <h4 class="font-semibold text-sm text-gray-600 mb-1">制作配方:</h4>
+                        <div class="flex flex-wrap gap-1 mb-1">
+                            ${formattedIngredients.split(', ').map(ing => `
+                                <span class="px-2 py-0.5 bg-gray-100 rounded-full text-xs">${ing}</span>
+                            `).join('')}
+                        </div>
+                        ${toolHtml}
+                        ${outputHtml}
+                        ${valueHtml}
+                        ${xpHtml}
+                    </div>
+                `;
+            }
+            
+            let durabilityHtml = '';
+            if (itemData.durability !== undefined) {
+                durabilityHtml = `
+                    <div class="mt-2 flex items-center text-sm">
+                        <i class="fa fa-shield text-yellow-600 mr-1"></i>
+                        <span>耐用度: ${itemData.durability}</span>
+                    </div>
+                `;
+            }
+            
+            // 购买价格显示（仅原材料）
+            let buyPriceHtml = '';
+            if (itemData.category === "原材料" && itemData.buyPrice) {
+                buyPriceHtml = `
+                    <div class="mt-2 flex items-center text-sm text-green-600">
+                        <i class="fa fa-shopping-cart mr-1"></i>
+                        <span>购买价格: ${itemData.buyPrice}金币/个</span>
+                    </div>
+                `;
+            }
+            
+            elements.itemDetail.innerHTML = `
+                <div class="flex items-center gap-2 mb-2">
+                    <i class="fa ${itemData.icon} text-${itemData.color} text-xl"></i>
+                    <h3 class="text-lg font-bold">${name}</h3>
+                </div>
+                <p class="text-gray-700 text-sm mb-2">${itemData.description}</p>
+                <div class="text-xs bg-gray-100 px-2 py-1 rounded inline-block mb-2">
+                    ${itemData.category}
+                </div>
+                ${durabilityHtml}
+                ${buyPriceHtml}
+                <div class="text-xs text-gray-500 mt-1">
+                    数量: ${itemData.quantity || 0}
+                </div>
+                ${recipeHtml}
+            `;
+            
+            showItemRecipes(name);
+        }
+
+        // 显示物品可参与的配方
+        function showItemRecipes(itemName) {
+            const itemRecipes = [];
+            for (const [resultName, resultData] of Object.entries(itemsData)) {
+                if (resultData.recipe && resultData.recipe.ingredients.includes(itemName)) {
+                    itemRecipes.push({result: resultName, data: resultData});
+                }
+            }
+            
+            if (itemRecipes.length === 0) {
+                elements.craftingRecipes.innerHTML = `<p class="text-gray-500 text-sm italic text-center">该物品不能用于制作其他物品</p>`;
+                return;
+            }
+            
+            let recipesHtml = '<div class="space-y-3">';
+            itemRecipes.forEach(({result, data}) => {
+                const isDiscovered = gameState.discoveredItems.has(result);
+                const ingredientCounts = {};
+                data.recipe.ingredients.forEach(ing => {
+                    ingredientCounts[ing] = (ingredientCounts[ing] || 0) + 1;
+                });
+                const formattedIngredients = Object.entries(ingredientCounts).map(([ing, count]) => {
+                    const isCurrent = ing === itemName;
+                    return `<span class="px-1.5 py-0.5 rounded-full text-xs ${isCurrent ? 'bg-primary/10 text-primary' : 'bg-gray-100'}">${ing}×${count}</span>`;
+                }).join('');
+                
+                recipesHtml += `
+                    <div class="p-2 bg-white rounded border border-gray-200">
+                        <div class="flex items-center gap-2 mb-1">
+                            <i class="fa ${data.icon} text-${data.color}"></i>
+                            <span class="font-medium text-sm">${result}</span>
+                        </div>
+                        <div class="flex flex-wrap gap-1 text-xs mb-1">${formattedIngredients}</div>
+                        ${data.recipe.tool ? `<div class="mt-1 text-xs"><i class="fa fa-wrench text-gray-500 mr-1"></i>需要: ${data.recipe.tool}</div>` : ''}
+                        ${data.recipe.outputQuantity > 1 ? `<div class="mt-1 text-xs text-green-600"><i class="fa fa-plus-circle mr-1"></i>产出: ${data.recipe.outputQuantity}个</div>` : ''}
+                    </div>
+                `;
+            });
+            recipesHtml += '</div>';
+            elements.craftingRecipes.innerHTML = recipesHtml;
+        }
+
+        // 统计合成槽中的物品数量
+        function updateSlotItemCounts() {
+            gameState.slotItemCounts = {};
+            Object.values(gameState.craftingSlots).forEach(itemName => {
+                gameState.slotItemCounts[itemName] = (gameState.slotItemCounts[itemName] || 0) + 1;
+            });
+            if (gameState.selectedRecipe) updateSelectedRecipeMaterialHint();
+        }
+
+        // 加载可制作的配方
+        function loadAvailableRecipes() {
+            const availableRecipes = [];
+            for (const [resultName, resultData] of Object.entries(itemsData)) {
+                if (!resultData.recipe) continue;
+                
+                let canShow = true;
+                // 检查材料是否全部解锁
+                for (const ing of resultData.recipe.ingredients) {
+                    if (!gameState.discoveredItems.has(ing)) {
+                        canShow = false;
+                        break;
+                    }
+                }
+                // 检查工具是否解锁
+                if (canShow && resultData.recipe.tool && !gameState.discoveredItems.has(resultData.recipe.tool)) {
+                    canShow = false;
+                }
+                
+                // 检查等级限制（3级以上解锁高级配方）
+                if (canShow && resultData.xp && resultData.xp > 50 && gameState.level < 3) {
+                    canShow = false;
+                }
+                
+                if (canShow) {
+                    availableRecipes.push({name: resultName, data: resultData});
+                }
+            }
+            
+            if (availableRecipes.length === 0) {
+                elements.noRecipeTip.classList.remove('hidden');
+                elements.recipeList.classList.add('hidden');
+                return;
+            }
+            
+            elements.noRecipeTip.classList.add('hidden');
+            elements.recipeList.classList.remove('hidden');
+            elements.recipeList.innerHTML = '';
+            
+            // 按分类分组显示配方
+            const recipesByCategory = {};
+            availableRecipes.forEach(recipe => {
+                const category = recipe.data.category;
+                if (!recipesByCategory[category]) recipesByCategory[category] = [];
+                recipesByCategory[category].push(recipe);
+            });
+            
+            // 生成分类标题和配方选项
+            for (const [category, recipes] of Object.entries(recipesByCategory)) {
+                const categoryTitle = document.createElement('div');
+                categoryTitle.className = 'text-xs font-semibold text-gray-500 px-2 py-1';
+                categoryTitle.textContent = category;
+                elements.recipeList.appendChild(categoryTitle);
+                
+                recipes.forEach(recipe => {
+                    const recipeItem = document.createElement('div');
+                    recipeItem.className = 'px-2 py-1.5 text-sm rounded cursor-pointer hover:bg-gray-200 transition-colors flex items-center gap-2';
+                    recipeItem.setAttribute('data-recipe', recipe.name);
+                    
+                    const ingredientCounts = {};
+                    recipe.data.recipe.ingredients.forEach(ing => {
+                        ingredientCounts[ing] = (ingredientCounts[ing] || 0) + 1;
+                    });
+                    const shortIngredients = Object.entries(ingredientCounts)
+                        .map(([ing, count]) => `${ing}×${count}`)
+                        .join('、');
+                    
+                    recipeItem.innerHTML = `
+                        <i class="fa ${recipe.data.icon} text-${recipe.data.color} text-xs"></i>
+                        <span>${recipe.name}</span>
+                        <span class="text-xs text-gray-500 ml-auto">${shortIngredients}</span>
+                    `;
+                    
+                    recipeItem.addEventListener('click', () => selectRecipe(recipe.name));
+                    elements.recipeList.appendChild(recipeItem);
+                });
+            }
+            
+            // 默认选中第一个配方
+            if (!gameState.selectedRecipe && availableRecipes.length > 0) {
+                selectRecipe(availableRecipes[0].name);
+            }
+        }
+
+        // 选择配方
+        function selectRecipe(recipeName) {
+            // 移除之前选中的配方样式
+            elements.recipeList.querySelectorAll('[data-recipe]').forEach(item => {
+                item.classList.remove('recipe-selected');
+            });
+            
+            // 设置当前选中的配方
+            gameState.selectedRecipe = recipeName;
+            const selectedRecipeData = itemsData[recipeName];
+            
+            // 更新选中配方的样式
+            const selectedRecipeItem = elements.recipeList.querySelector(`[data-recipe="${recipeName}"]`);
+            if (selectedRecipeItem) selectedRecipeItem.classList.add('recipe-selected');
+            
+            // 显示选中配方的提示
+            elements.selectedRecipeHint.classList.remove('hidden');
+            elements.selectedRecipeName.textContent = recipeName;
+            
+            // 清空工作台和结果区
+            clearCraftingSlots();
+            elements.resultArea.innerHTML = '<span class="text-gray-400">制作结果将显示在这里</span>';
+            
+            // 更新合成按钮状态
+            elements.craftBtn.disabled = true;
+            elements.craftBtn.innerHTML = `<i class="fa fa-wrench mr-2"></i> 开始制作（需添加材料）`;
+            
+            // 更新材料需求提示
+            updateSelectedRecipeMaterialHint();
+        }
+
+        // 更新选中配方的材料需求提示
+        function updateSelectedRecipeMaterialHint() {
+            const selectedRecipeData = itemsData[gameState.selectedRecipe];
+            const ingredientCounts = {};
+            selectedRecipeData.recipe.ingredients.forEach(ing => {
+                ingredientCounts[ing] = (ingredientCounts[ing] || 0) + 1;
+            });
+            
+            const materialTexts = [];
+            let allMaterialsReady = true;
+            
+            for (const [ing, reqQty] of Object.entries(ingredientCounts)) {
+                const addedQty = gameState.slotItemCounts[ing] || 0;
+                const isReady = addedQty >= reqQty;
+                
+                if (!isReady) allMaterialsReady = false;
+                
+                materialTexts.push(`
+                    <span class="${isReady ? 'material-required' : 'material-missing'}">
+                        ${ing}×${reqQty}（已添加${addedQty}/${reqQty}）
+                    </span>
+                `);
+            }
+            
+            elements.selectedRecipeMaterials.innerHTML = materialTexts.join('、');
+            
+            // 更新合成按钮状态
+            if (allMaterialsReady) {
+                elements.craftBtn.disabled = false;
+                elements.craftBtn.innerHTML = `<i class="fa fa-wrench mr-2"></i> 开始制作（材料已齐全）`;
+            } else {
+                elements.craftBtn.disabled = true;
+                elements.craftBtn.innerHTML = `<i class="fa fa-wrench mr-2"></i> 开始制作（需添加材料）`;
+            }
+        }
+
+        // 设置合成槽的拖拽事件
+        function setupCraftingSlots() {
+            const slots = document.querySelectorAll('.crafting-slot');
+            
+            slots.forEach(slot => {
+                slot.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    slot.classList.add('border-primary', 'bg-gray-100');
+                });
+                
+                slot.addEventListener('dragleave', () => {
+                    slot.classList.remove('border-primary', 'bg-gray-100');
+                });
+                
+                slot.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    slot.classList.remove('border-primary', 'bg-gray-100');
+                    
+                    const itemName = e.dataTransfer.getData('text/plain');
+                    const itemData = itemsData[itemName];
+                    
+                    if (itemData.quantity <= 0) {
+                        showToast(`没有足够的${itemName}`, 'error');
+                        return;
+                    }
+                    
+                    // 检查是否是选中配方所需的材料
+                    if (gameState.selectedRecipe) {
+                        const selectedRecipeData = itemsData[gameState.selectedRecipe];
+                        const requiredIngredients = new Set(selectedRecipeData.recipe.ingredients);
+                        if (!requiredIngredients.has(itemName)) {
+                            showToast(`当前配方不需要${itemName}`, 'error');
+                            return;
+                        }
+                        
+                        // 检查该材料是否已超过需求数量
+                        const ingredientCounts = {};
+                        selectedRecipeData.recipe.ingredients.forEach(ing => {
+                            ingredientCounts[ing] = (ingredientCounts[ing] || 0) + 1;
+                        });
+                        const reqQty = ingredientCounts[itemName] || 0;
+                        const addedQty = (gameState.slotItemCounts[itemName] || 0) + 1;
+                        if (addedQty > reqQty) {
+                            showToast(`${itemName}已足够（最多需要${reqQty}个）`, 'error');
+                            return;
+                        }
+                    }
+                    
+                    elements.resultArea.innerHTML = '<span class="text-gray-400">制作结果将显示在这里</span>';
+                    const slotId = slot.getAttribute('data-slot');
+                    const prevItem = gameState.craftingSlots[slotId];
+                    
+                    if (prevItem) itemsData[prevItem].quantity += 1;
+                    
+                    gameState.craftingSlots[slotId] = itemName;
+                    itemsData[itemName].quantity -= 1;
+                    
+                    slot.innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full relative">
+                            <i class="fa ${itemData.icon} text-${itemData.color} text-xl"></i>
+                            <span class="text-xs mt-1">${itemName}</span>
+                            <button class="remove-item absolute top-1 right-1 text-gray-400 hover:text-red-500">
+                                <i class="fa fa-times"></i>
+                            </button>
+                        </div>
+                    `;
+                    
+                    slot.querySelector('.remove-item').addEventListener('click', () => {
+                        itemsData[itemName].quantity += 1;
+                        delete gameState.craftingSlots[slotId];
+                        slot.innerHTML = '';
+                        updateSlotItemCounts();
+                        updateCraftButton();
+                        renderItems();
+                        updateInventory();
+                    });
+                    
+                    updateSlotItemCounts();
+                    updateCraftButton();
+                    renderItems();
+                    updateInventory();
+                });
+            });
+        }
+
+        // 更新合成按钮状态
+        function updateCraftButton() {
+            const hasItems = Object.keys(gameState.craftingSlots).length > 0;
+            if (!gameState.selectedRecipe) {
+                elements.craftBtn.disabled = true;
+                elements.craftBtn.innerHTML = `<i class="fa fa-wrench mr-2"></i> 开始制作（请先选择配方）`;
+                return;
+            }
+            elements.craftBtn.disabled = !hasItems;
+        }
+
+        // 执行合成
+        function craftItems() {
+            if (!gameState.selectedRecipe) return;
+            if (Object.keys(gameState.craftingSlots).length === 0) return;
+            
+            elements.craftBtn.classList.add('crafting-animation');
+            setTimeout(() => elements.craftBtn.classList.remove('crafting-animation'), 1000);
+            
+            // 使用选中的配方进行合成
+            const resultName = gameState.selectedRecipe;
+            const resultData = itemsData[resultName];
+            
+            // 验证材料是否匹配
+            const ingredientCounts = {};
+            resultData.recipe.ingredients.forEach(ing => {
+                ingredientCounts[ing] = (ingredientCounts[ing] || 0) + 1;
+            });
+            let isMatch = true;
+            for (const [ing, reqQty] of Object.entries(ingredientCounts)) {
+                if ((gameState.slotItemCounts[ing] || 0) !== reqQty) {
+                    isMatch = false;
+                    break;
+                }
+            }
+            // 检查工具是否解锁
+            if (resultData.recipe.tool && !gameState.discoveredItems.has(resultData.recipe.tool)) {
+                isMatch = false;
+            }
+            
+            if (isMatch) {
+                // 成功合成
+                const outputQty = resultData.recipe.outputQuantity || 1;
+                elements.resultArea.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full">
+                        <i class="fa ${resultData.icon} text-${resultData.color} text-2xl mb-1 new-item"></i>
+                        <span class="font-bold">${resultName}</span>
+                        <p class="text-xs text-green-600">获得${outputQty}个！</p>
+                    </div>
+                `;
+                
+                resultData.quantity = (resultData.quantity || 0) + outputQty;
+                
+                const isNewDiscovery = !gameState.discoveredItems.has(resultName);
+                if (isNewDiscovery) {
+                    gameState.discoveredItems.add(resultName);
+                    showDiscoveryToast(resultName);
+                    loadAvailableRecipes();
+                }
+                
+                // 增加经验值
+                if (resultData.xp) {
+                    addExperience(resultData.xp);
+                }
+                
+                if (!gameState.recentCrafts.includes(resultName)) {
+                    gameState.recentCrafts.unshift(resultName);
+                    if (gameState.recentCrafts.length > 5) gameState.recentCrafts.pop();
+                    updateRecentCrafts();
+                }
+                
+                // 检查是否完成订单
+                checkOrderCompletion(resultName, outputQty);
+                
+                playSound('success');
+            } else {
+                // 合成失败
+                elements.resultArea.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full text-center">
+                        <i class="fa fa-times-circle text-red-500 text-2xl mb-1"></i>
+                        <span class="font-bold">无法制作</span>
+                        <p class="text-xs text-gray-500">材料或工具不匹配</p>
+                    </div>
+                `;
+                
+                Object.values(gameState.craftingSlots).forEach(item => {
+                    itemsData[item].quantity += 1;
+                });
+                
+                playSound('failure');
+            }
+            
+            clearCraftingSlots();
+            updateDiscoveredCount();
+            renderItems();
+            updateInventory();
+        }
+
+        // 清空合成槽
+        function clearCraftingSlots() {
+            gameState.craftingSlots = {};
+            gameState.slotItemCounts = {};
+            document.querySelectorAll('.crafting-slot').forEach(slot => {
+                slot.innerHTML = '';
+            });
+            updateCraftButton();
+            if (gameState.selectedRecipe) updateSelectedRecipeMaterialHint();
+        }
+
+        // 等级系统 - 添加经验
+        function addExperience(amount) {
+            gameState.currentXp += amount;
+            
+            // 检查是否升级
+            while (gameState.currentXp >= gameState.nextLevelXp) {
+                levelUp();
+            }
+            
+            updateLevelDisplay();
+        }
+
+        // 等级系统 - 升级
+        function levelUp() {
+            gameState.currentXp -= gameState.nextLevelXp;
+            gameState.level += 1;
+            gameState.nextLevelXp = Math.floor(gameState.nextLevelXp * 1.5);
+            
+            // 升级奖励
+            gameState.coins += 100 * gameState.level;
+            elements.playerCoins.textContent = gameState.coins;
+            
+            // 显示升级提示
+            elements.levelUpNewLevel.textContent = gameState.level;
+            elements.levelUpToast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                elements.levelUpToast.classList.add('translate-y-20', 'opacity-0');
+            }, 5000);
+            
+            // 升级解锁新配方
+            loadAvailableRecipes();
+        }
+
+        // 等级系统 - 更新显示
+        function updateLevelDisplay() {
+            elements.playerLevel.textContent = gameState.level;
+            elements.currentXp.textContent = gameState.currentXp;
+            elements.nextLevelXp.textContent = gameState.nextLevelXp;
+            elements.xpBar.style.setProperty('--xp-percent', `${(gameState.currentXp / gameState.nextLevelXp) * 100}%`);
+            elements.playerCoins.textContent = gameState.coins;
+        }
+
+        // 订单系统 - 生成订单
+        function generateOrders() {
+            gameState.orders = [];
+            const craftableItems = Object.entries(itemsData)
+                .filter(([name, data]) => data.recipe && gameState.discoveredItems.has(name))
+                .map(([name]) => name);
+            
+            // 确保有足够的可制作物品来生成订单
+            if (craftableItems.length < gameState.maxOrders) {
+                // 如果可制作物品不足，用基础物品填充
+                const basicItems = Object.entries(itemsData)
+                    .filter(([name, data]) => gameState.discoveredItems.has(name))
+                    .map(([name]) => name);
+                craftableItems.push(...basicItems);
+            }
+            
+            // 生成随机订单
+            for (let i = 0; i < gameState.maxOrders; i++) {
+                const randomIndex = Math.floor(Math.random() * craftableItems.length);
+                const itemName = craftableItems[randomIndex];
+                const itemData = itemsData[itemName];
+                
+                // 确保订单不重复
+                if (gameState.orders.some(order => order.item === itemName)) {
+                    i--;
+                    continue;
+                }
+                
+                // 订单数量和奖励基于物品价值
+                const quantity = Math.floor(Math.random() * 2) + 1;
+                const baseReward = itemData.value * quantity;
+                const coinReward = Math.floor(baseReward * (0.8 + Math.random() * 0.4));
+                const xpReward = Math.floor((itemData.xp || 10) * quantity * (0.8 + Math.random() * 0.4));
+                
+                gameState.orders.push({
+                    id: Date.now() + i,
+                    item: itemName,
+                    quantity: quantity,
+                    remaining: quantity,
+                    coinReward: coinReward,
+                    xpReward: xpReward,
+                    completed: false
+                });
+            }
+            
+            renderOrders();
+        }
+
+        // 订单系统 - 渲染订单
+        function renderOrders() {
+            elements.ordersContainer.innerHTML = '';
+            
+            if (gameState.orders.length === 0) {
+                elements.ordersContainer.innerHTML = '<p class="text-gray-500 text-sm italic text-center">暂无订单</p>';
+                return;
+            }
+            
+            gameState.orders.forEach(order => {
+                const orderItem = document.createElement('div');
+                const itemData = itemsData[order.item];
+                const progress = order.completed ? '已完成' : `${order.remaining}/${order.quantity}`;
+                
+                orderItem.className = `p-2 mb-2 rounded-lg border ${order.completed ? 'order-completed' : 'border-gray-200 bg-white'}`;
+                orderItem.innerHTML = `
+                    <div class="flex justify-between items-start">
+                        <div class="flex items-center gap-2">
+                            <i class="fa ${itemData.icon} text-${itemData.color}"></i>
+                            <div>
+                                <div class="font-medium text-sm">${order.item} × ${order.quantity}</div>
+                                <div class="text-xs text-gray-500">进度: ${progress}</div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-xs text-blue-600 flex items-center justify-end">
+                                <i class="fa fa-coins mr-1"></i> ${order.coinReward}
+                            </div>
+                            <div class="text-xs text-purple-600 flex items-center justify-end">
+                                <i class="fa fa-star mr-1"></i> ${order.xpReward}
+                            </div>
+                        </div>
+                    </div>
+                    ${!order.completed ? `
+                        <button class="complete-order-btn mt-2 w-full text-xs bg-primary/10 hover:bg-primary/20 text-primary py-1 rounded transition-colors"
+                            data-order-id="${order.id}" ${order.remaining > itemsData[order.item].quantity ? 'disabled' : ''}>
+                            ${order.remaining > itemsData[order.item].quantity ? '材料不足' : '提交物品'}
+                        </button>
+                    ` : ''}
+                `;
+                
+                elements.ordersContainer.appendChild(orderItem);
+            });
+            
+            // 添加订单完成按钮事件
+            document.querySelectorAll('.complete-order-btn').forEach(btn => {
+                if (!btn.disabled) {
+                    btn.addEventListener('click', () => {
+                        const orderId = parseInt(btn.getAttribute('data-order-id'));
+                        completeOrder(orderId);
+                    });
+                }
+            });
+        }
+
+        // 订单系统 - 检查订单完成情况
+        function checkOrderCompletion(itemName, quantity) {
+            gameState.orders.forEach(order => {
+                if (!order.completed && order.item === itemName) {
+                    order.remaining = Math.max(0, order.remaining - quantity);
+                    if (order.remaining === 0) {
+                        order.completed = true;
+                    }
+                }
+            });
+            renderOrders();
+        }
+
+        // 订单系统 - 完成订单
+        function completeOrder(orderId) {
+            const order = gameState.orders.find(o => o.id === orderId);
+            if (!order || order.completed) return;
+            
+            // 检查物品数量是否足够
+            const itemData = itemsData[order.item];
+            if (itemData.quantity < order.remaining) return;
+            
+            // 扣除物品
+            itemData.quantity -= order.remaining;
+            order.remaining = 0;
+            order.completed = true;
+            
+            // 给予奖励
+            gameState.coins += order.coinReward;
+            addExperience(order.xpReward);
+            
+            // 显示奖励提示
+            elements.orderRewards.textContent = `${order.coinReward}金币 + ${order.xpReward}经验`;
+            elements.orderCompleteToast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                elements.orderCompleteToast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+            
+            // 更新UI
+            renderOrders();
+            renderItems();
+            updateInventory();
+        }
+
+        // 购买系统 - 渲染商店
+        function renderShop() {
+            elements.shopContainer.innerHTML = '';
+            
+            // 获取所有可购买的原材料
+            const purchasableItems = Object.entries(itemsData)
+                .filter(([name, data]) => data.category === "原材料" && data.buyPrice);
+            
+            purchasableItems.forEach(([name, data]) => {
+                const shopItem = document.createElement('div');
+                shopItem.className = 'bg-white rounded-lg p-3 border border-gray-200 item-hover flex flex-col items-center justify-center';
+                shopItem.innerHTML = `
+                    <div class="relative w-full flex justify-center">
+                        <i class="fa ${data.icon} text-${data.color} text-xl mb-2"></i>
+                    </div>
+                    <span class="text-xs text-center mb-1">${name}</span>
+                    <div class="text-xs text-green-600 mb-2">${data.buyPrice}金币/个</div>
+                    <div class="flex gap-1 w-full">
+                        <button class="buy-btn w-1/2 text-xs bg-green-100 hover:bg-green-200 text-green-700 py-1 rounded transition-colors" 
+                            data-item="${name}" data-qty="1">
+                            买1个
+                        </button>
+                        <button class="buy-btn w-1/2 text-xs bg-green-600 hover:bg-green-700 text-white py-1 rounded transition-colors" 
+                            data-item="${name}" data-qty="5">
+                            买5个
+                        </button>
+                    </div>
+                `;
+                
+                elements.shopContainer.appendChild(shopItem);
+            });
+            
+            // 添加购买按钮事件
+            document.querySelectorAll('.buy-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const itemName = btn.getAttribute('data-item');
+                    const quantity = parseInt(btn.getAttribute('data-qty'));
+                    purchaseItem(itemName, quantity);
+                });
+            });
+        }
+
+        // 购买系统 - 购买物品
+        function purchaseItem(itemName, quantity) {
+            const itemData = itemsData[itemName];
+            if (!itemData || !itemData.buyPrice) return;
+            
+            const totalCost = itemData.buyPrice * quantity;
+            
+            // 检查金币是否足够
+            if (gameState.coins < totalCost) {
+                showToast(`金币不足，需要${totalCost}金币`, 'error');
+                return;
+            }
+            
+            // 扣除金币并增加物品数量
+            gameState.coins -= totalCost;
+            itemData.quantity = (itemData.quantity || 0) + quantity;
+            
+            // 更新显示
+            updateLevelDisplay();
+            renderItems();
+            updateInventory();
+            
+            // 显示购买成功提示
+            elements.purchasedItem.textContent = `${itemName}×${quantity}`;
+            elements.purchaseToast.classList.remove('translate-y-20', 'opacity-0');
+            setTimeout(() => {
+                elements.purchaseToast.classList.add('translate-y-20', 'opacity-0');
+            }, 3000);
+            
+            playSound('success');
+        }
+
+        // 其他辅助函数
+        function updateDiscoveredCount() {
+            const totalItems = Object.keys(itemsData).length;
+            elements.discoveredCount.textContent = `已解锁: ${gameState.discoveredItems.size}/${totalItems}`;
+        }
+
+        function showDiscoveryToast(itemName) {
+            elements.newItemName.textContent = itemName;
+            elements.discoveryToast.classList.remove('translate-y-20', 'opacity-0');
+            playSound('discovery');
+            setTimeout(() => {
+                elements.discoveryToast.classList.add('translate-y-20', 'opacity-0');
+            }, 5000);
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `fixed top-6 right-6 ${type === 'error' ? 'bg-red-500' : 'bg-primary'} text-white p-3 rounded-lg shadow-lg z-50 fade-in`;
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'transition-opacity', 'duration-300');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function updateRecentCrafts() {
+            elements.recentCrafts.innerHTML = '';
+            gameState.recentCrafts.forEach(name => {
+                const item = document.createElement('div');
+                const itemData = itemsData[name];
+                item.className = 'bg-gray-100 rounded-full px-3 py-1 text-sm flex items-center gap-1 cursor-pointer hover:bg-gray-200 transition-colors';
+                item.innerHTML = `<i class="fa ${itemData.icon} text-${itemData.color} text-xs"></i><span>${name}</span>`;
+                item.addEventListener('click', () => showItemDetail(name));
+                elements.recentCrafts.appendChild(item);
+            });
+        }
+
+        function updateInventory() {
+            // 渲染商店
+            renderShop();
+            
+            // 渲染背包物品
+            elements.inventoryContainer.innerHTML = '';
+            const inventoryItems = Object.entries(itemsData)
+                .filter(([name, data]) => gameState.discoveredItems.has(name) && data.quantity > 0)
+                .sort((a, b) => b[1].quantity - a[1].quantity);
+            
+            if (inventoryItems.length === 0) {
+                elements.inventoryContainer.innerHTML = `<p class="col-span-full text-gray-500 text-center italic py-8">背包是空的</p>`;
+                return;
+            }
+            
+            inventoryItems.forEach(([name, data]) => {
+                const itemElement = document.createElement('div');
+                itemElement.className = 'bg-white rounded-lg p-3 border border-gray-200 item-hover flex flex-col items-center justify-center';
+                itemElement.setAttribute('data-item', name);
+                itemElement.innerHTML = `
+                    <div class="relative w-full flex justify-center">
+                        <i class="fa ${data.icon} text-${data.color} text-xl mb-2"></i>
+                        <span class="absolute bottom-0 right-0 bg-primary/80 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">${data.quantity}</span>
+                    </div>
+                    <span class="text-xs text-center">${name}</span>
+                `;
+                itemElement.addEventListener('click', () => showItemDetail(name, data));
+                elements.inventoryContainer.appendChild(itemElement);
+            });
+        }
+
+        function playSound(type) {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'success') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(660, audioCtx.currentTime);
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            } else if (type === 'failure') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, audioCtx.currentTime);
+                oscillator.frequency.setValueAtTime(330, audioCtx.currentTime + 0.1);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.2);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.2);
+            } else if (type === 'discovery' || type === 'levelup') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(550, audioCtx.currentTime);
+                oscillator.frequency.setValueAtTime(660, audioCtx.currentTime + 0.2);
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime + 0.4);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0, audioCtx.currentTime + 0.6);
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.6);
+            }
+        }
+
+        // 设置所有事件监听器
+        function setupEventListeners() {
+            setupCraftingSlots();
+            elements.craftBtn.addEventListener('click', craftItems);
+            elements.itemSearch.addEventListener('input', (e) => {
+                gameState.searchQuery = e.target.value;
+                renderItems();
+            });
+            
+            elements.categoryBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    elements.categoryBtns.forEach(b => {
+                        b.classList.remove('active', 'bg-primary/10', 'text-primary');
+                        b.classList.add('bg-gray-100', 'hover:bg-gray-200', 'text-gray-700');
+                    });
+                    btn.classList.add('active', 'bg-primary/10', 'text-primary');
+                    btn.classList.remove('bg-gray-100', 'hover:bg-gray-200', 'text-gray-700');
+                    gameState.activeCategory = btn.getAttribute('data-category');
+                    renderItems();
+                });
+            });
+            
+            // 帮助模态框
+            elements.helpBtn.addEventListener('click', () => {
+                elements.helpModal.classList.remove('hidden');
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                audioCtx.close();
+            });
+            elements.closeHelpBtn.addEventListener('click', () => elements.helpModal.classList.add('hidden'));
+            elements.gotItBtn.addEventListener('click', () => elements.helpModal.classList.add('hidden'));
+            elements.helpModal.addEventListener('click', (e) => {
+                if (e.target === elements.helpModal) elements.helpModal.classList.add('hidden');
+            });
+            
+            // 背包模态框
+            elements.inventoryBtn.addEventListener('click', () => {
+                elements.inventoryModal.classList.remove('hidden');
+                updateInventory();
+            });
+            elements.closeInventoryBtn.addEventListener('click', () => elements.inventoryModal.classList.add('hidden'));
+            elements.closeInventoryBtn2.addEventListener('click', () => elements.inventoryModal.classList.add('hidden'));
+            elements.inventoryModal.addEventListener('click', (e) => {
+                if (e.target === elements.inventoryModal) elements.inventoryModal.classList.add('hidden');
+            });
+            
+            // 订单刷新按钮
+            elements.refreshOrdersBtn.addEventListener('click', generateOrders);
+        }
+
+        // 启动游戏
+        initGame();
+    </script>
+</body>
+</html>

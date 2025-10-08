@@ -1,0 +1,1796 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>城市公交大亨 - 修复版</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#165DFF',
+                        secondary: '#36CFC9',
+                        accent: '#722ED1',
+                        success: '#52C41A',
+                        warning: '#FAAD14',
+                        danger: '#FF4D4F',
+                        dark: '#1D2129',
+                        light: '#F2F3F5',
+                        highlight1: '#004F5F',
+                        highlight2: '#FAAD00'
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .content-auto {
+                content-visibility: auto;
+            }
+            .text-shadow {
+                text-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            }
+            .card-hover {
+                transition: all 0.3s ease;
+            }
+            .card-hover:hover {
+                transform: translateY(-5px);
+                box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            }
+            .animate-pulse-slow {
+                animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+            }
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            .station-pulse {
+                animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+            }
+            .editing-mode {
+                border: 2px dashed #165DFF !important;
+            }
+            .route-highlight {
+                stroke-width: 6px !important;
+                opacity: 0.8 !important;
+            }
+            .station-highlight {
+                transform: scale(1.5);
+                z-index: 20 !important;
+            }
+            .group {
+                display: inline-block;
+            }
+            @keyframes pulse-ring {
+                0% { transform: scale(1); opacity: 1; }
+                50% { transform: scale(1.2); opacity: 0.5; }
+                100% { transform: scale(1); opacity: 1; }
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans text-dark overflow-hidden h-screen flex flex-col">
+    <!-- 顶部导航栏 -->
+    <header class="bg-white shadow-sm border-b border-gray-200 z-30">
+        <div class="container mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <i class="fa fa-bus text-primary text-2xl"></i>
+                <h1 class="text-xl font-bold text-primary">城市公交大亨</h1>
+            </div>
+            
+            <div class="flex items-center space-x-6">
+                <div class="flex items-center space-x-1">
+                    <i class="fa fa-money text-success"></i>
+                    <span id="money-display" class="font-semibold">¥10000</span>
+                </div>
+                
+                <div class="flex items-center space-x-1">
+                    <i class="fa fa-clock-o text-dark/70"></i>
+                    <span id="time-display" class="font-medium">08:00</span>
+                </div>
+                
+                <div class="flex items-center space-x-4">
+                    <button id="save-btn" class="text-gray-600 hover:text-primary transition-colors">
+                        <i class="fa fa-save"></i>
+                        <span class="ml-1 text-sm">保存</span>
+                    </button>
+                    <button id="reset-btn" class="text-gray-600 hover:text-danger transition-colors">
+                        <i class="fa fa-refresh"></i>
+                        <span class="ml-1 text-sm">重置</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 主要内容区 -->
+    <main class="flex flex-1 overflow-hidden">
+        <!-- 左侧控制面板 -->
+        <aside class="w-80 bg-white border-r border-gray-200 flex flex-col z-20">
+            <div class="p-4 border-b border-gray-200">
+                <h2 class="font-bold text-lg">控制面板</h2>
+            </div>
+            
+            <!-- 游戏状态 -->
+            <div class="p-4 border-b border-gray-200">
+                <h3 class="font-semibold text-sm uppercase text-gray-500 mb-3">公司状态</h3>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-light rounded-lg p-3 card-hover">
+                        <p class="text-xs text-gray-500">公交线路</p>
+                        <p id="line-count" class="text-xl font-bold">0</p>
+                    </div>
+                    <div class="bg-light rounded-lg p-3 card-hover">
+                        <p class="text-xs text-gray-500">公交车</p>
+                        <p id="bus-count" class="text-xl font-bold">0</p>
+                    </div>
+                    <div class="bg-light rounded-lg p-3 card-hover">
+                        <p class="text-xs text-gray-500">日均乘客</p>
+                        <p id="daily-passengers" class="text-xl font-bold">0</p>
+                    </div>
+                    <div class="bg-light rounded-lg p-3 card-hover">
+                        <p class="text-xs text-gray-500">每小时利润</p>
+                        <p id="hourly-profit" class="text-xl font-bold text-success">¥0</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 线路管理 -->
+            <div class="p-4 border-b border-gray-200">
+                <h3 class="font-semibold text-sm uppercase text-gray-500 mb-3">线路管理</h3>
+                
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-500 mb-1">选择线路</label>
+                    <div class="flex">
+                        <select id="line-select" class="flex-1 border border-gray-300 rounded-l-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                            <option value="-1">新建线路</option>
+                        </select>
+                        <button id="delete-line-btn" class="bg-gray-100 hover:bg-gray-200 px-3 rounded-r-md text-gray-600 transition-colors">
+                            <i class="fa fa-trash"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="block text-xs text-gray-500 mb-1">线路票价 (¥)</label>
+                    <input type="number" id="line-fare" min="1" max="15" value="2" 
+                        class="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary">
+                </div>
+                
+                <div class="flex space-x-2">
+                    <button id="edit-line-btn" class="flex-1 bg-primary hover:bg-primary/90 text-white rounded-md px-3 py-2 text-sm transition-colors">
+                        <i class="fa fa-pencil mr-1"></i> 编辑线路
+                    </button>
+                    <button id="complete-line-btn" class="flex-1 bg-success hover:bg-success/90 text-white rounded-md px-3 py-2 text-sm transition-colors" disabled>
+                        <i class="fa fa-check mr-1"></i> 完成线路
+                    </button>
+                </div>
+                
+                <div id="editing-status" class="mt-3 text-xs text-gray-500 hidden">
+                    <i class="fa fa-info-circle mr-1"></i>
+                    <span>编辑模式：左键点击站点添加到线路，右键点击停止编辑</span>
+                </div>
+            </div>
+            
+            <!-- 车辆管理 -->
+            <div class="p-4 border-b border-gray-200">
+                <h3 class="font-semibold text-sm uppercase text-gray-500 mb-3">车辆管理</h3>
+                
+                <div class="space-y-3">
+                    <!-- 普通公交车 -->
+                    <!-- 替换原有“车辆管理”部分的HTML -->
+                    <div class="p-4 border-b border-gray-200">
+                        <h3 class="font-semibold text-sm uppercase text-gray-500 mb-3">车辆管理</h3>
+                        
+                        <!-- 切换按钮 -->
+                        <div class="flex border border-gray-200 rounded-md mb-3 overflow-hidden">
+                            <button class="bus-type-btn flex-1 py-2 text-sm font-medium bg-primary text-white" data-type="standard">
+                                普通公交车
+                            </button>
+                            <button class="bus-type-btn flex-1 py-2 text-sm font-medium bg-gray-100 text-gray-600" data-type="express">
+                                快速公交车
+                            </button>
+                            <button class="bus-type-btn flex-1 py-2 text-sm font-medium bg-gray-100 text-gray-600" data-type="double-decker">
+                                双层公交车
+                            </button>
+                            <button class="bus-type-btn flex-1 py-2 text-sm font-medium bg-gray-100 text-gray-600" data-type="pretty">
+                                豪华公交车
+                            </button>
+                            <button class="bus-type-btn flex-1 py-2 text-sm font-medium bg-gray-100 text-gray-600" data-type="elec1">
+                                有轨电车
+                            </button>
+                        </div>
+                        
+                        <!-- 卡片容器（根据选中类型显示对应信息） -->
+                        <div class="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                            <div class="p-4" id="bus-card-content">
+                                <!-- 内容将通过JS动态生成 -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- 统计信息 -->
+            <div class="p-4 flex-1 overflow-y-auto scrollbar-hide">
+                <h3 class="font-semibold text-sm uppercase text-gray-500 mb-3">运营统计</h3>
+                <div class="bg-white rounded-lg border border-gray-200 p-2 h-48">
+                    <canvas id="profit-chart"></canvas>
+                </div>
+            </div>
+        </aside>
+        
+        <!-- 中央游戏地图 -->
+        <section class="flex-1 relative bg-gray-100 overflow-hidden">
+            <div id="game-map" class="absolute inset-0 cursor-grab active:cursor-grabbing">
+                <!-- 地图背景 -->
+                <div class="absolute inset-0 bg-[#E8F4F8]">
+                    <!-- 网格背景 -->
+                    <div class="absolute inset-0 opacity-10" style="background-image: linear-gradient(#000 1px, transparent 1px), linear-gradient(90deg, #000 1px, transparent 1px); background-size: 20px 20px;"></div>
+                </div>
+                
+                <!-- 城市区域 -->
+                <div id="city-areas" class="absolute inset-0"></div>
+                
+                <!-- 线路和站点将通过JS动态生成 -->
+                <div id="routes-container" class="absolute inset-0"></div>
+                <div id="stations-container" class="absolute inset-0"></div>
+                <div id="buses-container" class="absolute inset-0"></div>
+                <div id="passengers-container" class="absolute inset-0 pointer-events-none"></div>
+                <div id="notifications-container" class="absolute inset-0 pointer-events-none"></div>
+            </div>
+            
+            <!-- 游戏提示 -->
+            <div id="game-tip" class="absolute bottom-4 left-4 bg-white/90 backdrop-blur-sm shadow-lg rounded-lg p-3 max-w-xs z-10">
+                <p class="text-sm"><i class="fa fa-lightbulb-o text-warning mr-2"></i><span id="tip-text">选择一条线路，点击"编辑线路"按钮，然后左键点击站点添加到线路，右键停止编辑</span></p>
+            </div>
+        </section>
+        
+        <!-- 右侧信息面板 -->
+        <aside class="w-72 bg-white border-l border-gray-200 hidden md:block overflow-y-auto z-20">
+            <div class="p-4 border-b border-gray-200">
+                <h2 class="font-bold text-lg">信息面板</h2>
+            </div>
+            
+            <div id="selected-info" class="p-4">
+                <p class="text-gray-500 text-sm text-center py-8">请在地图上选择站点、线路或公交车查看详情</p>
+            </div>
+            
+            <div class="p-4 border-t border-gray-200">
+                <h3 class="font-semibold text-sm uppercase text-gray-500 mb-3">事件日志</h3>
+                <div id="event-log" class="space-y-2 max-h-64 overflow-y-auto scrollbar-hide text-sm">
+                    <!-- 事件日志将通过JS动态生成 -->
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- 游戏开始弹窗 -->
+    <div id="start-modal" class="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 transform transition-all">
+            <div class="text-center mb-6">
+                <i class="fa fa-bus text-primary text-5xl mb-4"></i>
+                <h2 class="text-2xl font-bold text-primary">城市公交大亨</h2>
+                <p class="text-gray-500 mt-2">打造你自己的公交帝国，服务城市居民！</p>
+            </div>
+            
+            <div class="space-y-4 mb-6">
+                <div class="flex items-start">
+                    <div class="bg-primary/10 p-2 rounded-full text-primary mr-3">
+                        <i class="fa fa-map-marker"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">规划线路</h3>
+                        <p class="text-sm text-gray-500">选择线路后点击"编辑线路"，左键点击站点添加到线路，右键点击停止编辑</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start">
+                    <div class="bg-primary/10 p-2 rounded-full text-primary mr-3">
+                        <i class="fa fa-car"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">购买车辆</h3>
+                        <p class="text-sm text-gray-500">选择线路后，购买合适的公交车开始运营</p>
+                    </div>
+                </div>
+                
+                <div class="flex items-start">
+                    <div class="bg-primary/10 p-2 rounded-full text-primary mr-3">
+                        <i class="fa fa-line-chart"></i>
+                    </div>
+                    <div>
+                        <h3 class="font-medium">优化运营</h3>
+                        <p class="text-sm text-gray-500">调整票价和车辆配置，实现利润最大化</p>
+                    </div>
+                </div>
+            </div>
+            
+            <button id="start-game-btn" class="w-full bg-primary hover:bg-primary/90 text-white font-medium py-3 px-4 rounded-lg transition-colors">
+                开始游戏
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // 游戏配置
+        const GAME_CONFIG = {
+            DOWN_PASSENGERS: 0,
+            NEXT_STATION_ID: 1,
+            BASE_MONEY: 10000,
+            INITIAL_STATIONS: 3,
+            DAY_CYCLE: 1760, // 游戏时间24秒为一天
+            PASSENGER_GENERATION_RATE: 1000, // 毫秒
+            UPDATE_INTERVAL: 100, // 游戏更新间隔
+            STATION_SIZE: 16, // 站点大小
+            BUS_SPEED: {
+                standard: 75,
+                express: 120,
+                'double-decker': 60,
+                pretty: 120,
+                elec1: 240
+            },
+            BUS_CAPACITY: {
+                standard: 30,
+                express: 20,
+                'double-decker': 60,
+                pretty: 40,
+                elec1: 120
+            },
+            BUS_COST: {
+                standard: 1000,
+                express: 1500,
+                'double-decker': 2000,
+                pretty: 4000,
+                elec1: 12000
+            },
+            BUS_HOURLY_COST: {
+                standard: 5,
+                express: 8,
+                'double-decker': 7,
+                pretty: 12,
+                elec1: 30
+            }
+        };
+
+        // 游戏状态
+        let gameState = {
+            money: GAME_CONFIG.BASE_MONEY,
+            gameTime: 0, // 分钟
+            day: 1,
+            stations: [],
+            lines: [],
+            buses: [],
+            passengers: [],
+            events: [],
+            profitHistory: [],
+            selectedLineId: -1,
+            editingLine: {
+                id: null,
+                stations: []
+            },
+            selectedEntity: null, // 选中的实体 (站点、公交车等)
+            lastPassengerGeneration: 0,
+            lastProfitCalculation: 0,
+            isRunning: false
+        };
+
+        // DOM 元素
+        const elements = {
+            moneyDisplay: document.getElementById('money-display'),
+            timeDisplay: document.getElementById('time-display'),
+            lineCount: document.getElementById('line-count'),
+            busCount: document.getElementById('bus-count'),
+            dailyPassengers: document.getElementById('daily-passengers'),
+            hourlyProfit: document.getElementById('hourly-profit'),
+            lineSelect: document.getElementById('line-select'),
+            lineFare: document.getElementById('line-fare'),
+            deleteLineBtn: document.getElementById('delete-line-btn'),
+            editLineBtn: document.getElementById('edit-line-btn'),
+            completeLineBtn: document.getElementById('complete-line-btn'),
+            editingStatus: document.getElementById('editing-status'),
+            saveBtn: document.getElementById('save-btn'),
+            resetBtn: document.getElementById('reset-btn'),
+            gameMap: document.getElementById('game-map'),
+            routesContainer: document.getElementById('routes-container'),
+            stationsContainer: document.getElementById('stations-container'),
+            busesContainer: document.getElementById('buses-container'),
+            passengersContainer: document.getElementById('passengers-container'),
+            notificationsContainer: document.getElementById('notifications-container'),
+            selectedInfo: document.getElementById('selected-info'),
+            eventLog: document.getElementById('event-log'),
+            gameTip: document.getElementById('game-tip'),
+            tipText: document.getElementById('tip-text'),
+            startModal: document.getElementById('start-modal'),
+            startGameBtn: document.getElementById('start-game-btn'),
+            cityAreas: document.getElementById('city-areas')
+        };
+
+        // 图表
+        let profitChart;
+        // 初始化公交车卡片
+        function initBusCards() {
+            // 公交车类型配置
+            const busTypes = {
+                standard: {
+                    name: "普通公交车",
+                    desc: "容量: 30人 | 速度: 中等",
+                    cost: "¥1000",
+                    hourlyCost: "¥50/小时",
+                    icon: "",
+                    color: "bg-primary"
+                },
+                express: {
+                    name: "快速公交车",
+                    desc: "容量: 20人 | 速度: 快速",
+                    cost: "¥1500",
+                    hourlyCost: "¥80/小时",
+                    icon: "",
+                    color: "bg-accent"
+                },
+                "double-decker": {
+                    name: "双层公交车",
+                    desc: "容量: 50人 | 速度: 较慢",
+                    cost: "¥2000",
+                    hourlyCost: "¥70/小时",
+                    icon: "",
+                    color: "bg-secondary"
+                },
+                pretty: {
+                    name: "豪华公交车",
+                    desc: "容量: 30人 | 速度: 快速",
+                    cost: "¥4000",
+                    hourlyCost: "¥120/小时",
+                    icon: "",
+                    color: "bg-highlight2"
+                },
+                elec1: {
+                    name: "有轨电车",
+                    desc: "容量: 120人 | 速度: 极快",
+                    cost: "¥12000",
+                    hourlyCost: "¥300/小时",
+                    icon: "",
+                    color: "bg-highlight1"
+                }
+            };
+
+            // 默认显示普通公交车
+            let activeType = "standard";
+            updateBusCard(activeType);
+
+            // 切换按钮事件
+            document.querySelectorAll(".bus-type-btn").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    // 更新按钮样式
+                    document.querySelectorAll(".bus-type-btn").forEach(b => {
+                        b.classList.remove("bg-primary", "text-white");
+                        b.classList.add("bg-gray-100", "text-gray-600");
+                    });
+                    btn.classList.remove("bg-gray-100", "text-gray-600");
+                    btn.classList.add("bg-primary", "text-white");
+                    
+                    // 更新卡片内容
+                    activeType = btn.getAttribute("data-type");
+                    updateBusCard(activeType);
+                });
+            });
+
+            // 更新卡片内容
+            function updateBusCard(type) {
+                const bus = busTypes[type];
+                document.getElementById("bus-card-content").innerHTML = `
+                    <div class="flex items-start">
+                        <div class="${bus.color} text-white p-3 rounded-lg mr-3">
+                            <i class="fa ${bus.icon} text-xl"></i>
+                        </div>
+                        <div class="flex-1">
+                            <h4 class="font-bold text-base">${bus.name}</h4>
+                            <p class="text-xs text-gray-500 mt-1">${bus.desc}</p>
+                            <div class="flex items-center mt-2 text-sm">
+                                <span class="text-gray-600 mr-4"><i class="fa fa-money text-success mr-1"></i> 单价: ${bus.cost}</span>
+                                <span class="text-gray-600"><i class="fa fa-clock-o mr-1"></i> 时耗: ${bus.hourlyCost}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <button data-type="${type}" class="buy-bus-btn w-full mt-3 bg-primary hover:bg-primary/90 text-white rounded-md px-3 py-2 text-sm transition-colors">
+                        购买 ${bus.cost}
+                    </button>
+                `;
+
+                // 绑定购买事件
+                document.querySelector(".buy-bus-btn").addEventListener("click", () => {
+                    buyBus(type);
+                });
+            }
+        }
+
+        // 初始化游戏
+        function initGame() {
+            // 创建初始城市区域
+            createCityAreas();
+            
+            // 创建初始站点
+            createInitialStations();
+            createInitialStations();
+            createInitialStations();
+            
+            // 初始化图表
+            initChart();
+            
+            initBusCards();
+
+            // 绑定事件监听
+            bindEvents();
+            
+            // 更新UI
+            updateUI();
+        }
+
+        // 创建城市区域
+        function createCityAreas() {
+            const areaTypes = [
+                { color: '#FFE0B2', size: 400, count: 2 }, // 商业区
+                { color: '#C8E6C9', size: 500, count: 3 }, // 居民区
+                { color: '#BBDEFB', size: 300, count: 2 }  // 工业区
+            ];
+            
+            const mapWidth = 2000;
+            const mapHeight = 1500;
+            
+            areaTypes.forEach(type => {
+                for (let i = 0; i < type.count; i++) {
+                    const area = document.createElement('div');
+                    const x = Math.random() * mapWidth;
+                    const y = Math.random() * mapHeight;
+                    
+                    area.className = 'absolute rounded-full opacity-30';
+                    area.style.width = `${type.size}px`;
+                    area.style.height = `${type.size}px`;
+                    area.style.left = `${x - type.size/2}px`;
+                    area.style.top = `${y - type.size/2}px`;
+                    area.style.backgroundColor = type.color;
+                    
+                    elements.cityAreas.appendChild(area);
+                }
+            });
+        }
+
+        // 创建初始站点
+        function createInitialStations() {
+            // 获取地图可见区域尺寸（根据实际可视区域调整）
+            const mapVisibleWidth = 900;  // 可见宽度
+            const mapVisibleHeight = 600;  // 可见高度
+            const margin = 50;  // 边缘留白
+            
+            for (let i = 0; i < 1; i++) {
+                // 确保站点在可见区域内生成
+                const station = {
+                    id: GAME_CONFIG.NEXT_STATION_ID,
+                    x: margin + Math.random() * (mapVisibleWidth - margin * 2),
+                    y: margin + Math.random() * (mapVisibleHeight - margin * 2),
+                    name: `站点 ${GAME_CONFIG.NEXT_STATION_ID}`,
+                    passengers: 0,
+                    waitingPassengers: {}, // { destinationId: count }
+                    isTransfer: false,
+                    connectedLines: []
+                };
+                
+                GAME_CONFIG.NEXT_STATION_ID ++;
+                gameState.stations.push(station);
+                createStationElement(station);
+            }
+            
+            // 随机设置一个换乘站
+            const transferStation = gameState.stations[Math.floor(Math.random() * gameState.stations.length)];
+            transferStation.isTransfer = true;
+        }
+
+        // 初始化图表
+        function initChart() {
+            const ctx = document.getElementById('profit-chart').getContext('2d');
+            
+            profitChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: '利润 (¥)',
+                        data: [],
+                        borderColor: '#165DFF',
+                        backgroundColor: 'rgba(22, 93, 255, 0.1)',
+                        tension: 0.4,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: false
+                        },
+                        y: {
+                            beginAtZero: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // 绑定事件
+        function bindEvents() {
+            // 开始游戏
+            elements.startGameBtn.addEventListener('click', () => {
+                elements.startModal.classList.add('hidden');
+                gameState.isRunning = true;
+                gameLoop();
+                addEvent('游戏开始！祝你运营顺利！');
+            });
+            
+            // 地图点击 - 添加站点到当前线路
+            elements.gameMap.addEventListener('click', (e) => {
+                // 只处理左键点击
+                if (e.button !== 0) return;
+                
+                const rect = elements.gameMap.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+                
+                // 如果正在编辑线路，添加现有站点
+                if (gameState.editingLine.id !== null) {
+                    // 检查是否点击了现有站点
+                    const clickedStation = findStationAt(x, y);
+                    
+                    if (clickedStation) {
+                        // 添加现有站点到线路
+                        addStationToLine(clickedStation.id);
+                    } else {
+                        showNotification('请点击现有站点添加到线路', 'info');
+                    }
+                }
+            });
+            
+            // 右键点击地图 - 停止编辑线路
+            elements.gameMap.addEventListener('contextmenu', (e) => {
+                e.preventDefault(); // 阻止默认右键菜单
+                
+                // 如果正在编辑线路，则停止编辑
+                if (gameState.editingLine.id !== null) {
+                    completeLine();
+                }
+            });
+            
+            // 按钮事件
+            elements.editLineBtn.addEventListener('click', startEditingLine);
+            elements.completeLineBtn.addEventListener('click', completeLine);
+            elements.deleteLineBtn.addEventListener('click', deleteSelectedLine);
+            elements.lineSelect.addEventListener('change', changeSelectedLine);
+            elements.lineFare.addEventListener('change', updateLineFare);
+            elements.saveBtn.addEventListener('click', saveGame);
+            elements.resetBtn.addEventListener('click', resetGame);
+            
+            // 购买公交车
+            document.querySelectorAll('.buy-bus-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const type = btn.getAttribute('data-type');
+                    buyBus(type);
+                });
+            });
+            
+            // 地图拖动
+            let isDragging = false;
+            let startX, startY;
+            let mapX = 0, mapY = 0;
+            
+            elements.gameMap.addEventListener('mousedown', (e) => {
+                if (e.target === elements.gameMap || e.target.id === 'city-areas') {
+                    isDragging = true;
+                    startX = e.clientX - mapX;
+                    startY = e.clientY - mapY;
+                    gameState.selectedEntity = null;
+                    updateSelectedInfo();
+                }
+            });
+            
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    mapX = e.clientX - startX;
+                    mapY = e.clientY - startY;
+                    updateMapPosition();
+                }
+            });
+            
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+            });
+            
+            // 缩放功能
+            elements.gameMap.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                // 缩放逻辑可以在这里实现
+            });
+        }
+
+        // 更新地图位置
+        function updateMapPosition() {
+            elements.routesContainer.style.transform = `translate(${mapX}px, ${mapY}px)`;
+            elements.stationsContainer.style.transform = `translate(${mapX}px, ${mapY}px)`;
+            elements.busesContainer.style.transform = `translate(${mapX}px, ${mapY}px)`;
+            elements.passengersContainer.style.transform = `translate(${mapX}px, ${mapY}px)`;
+            elements.notificationsContainer.style.transform = `translate(${mapX}px, ${mapY}px)`;
+            elements.cityAreas.style.transform = `translate(${mapX}px, ${mapY}px)`;
+        }
+
+        // 开始编辑线路
+        function startEditingLine() {
+            // 如果没有选择线路且没有线路，创建新线路
+            if (gameState.selectedLineId === -1) {
+                const newLineId = gameState.lines.length;
+                gameState.lines.push({
+                    id: newLineId,
+                    stations: [],
+                    color: getRandomColor(),  // 分配随机颜色
+                    fare: parseInt(elements.lineFare.value),
+                    dailyPassengers: 0
+                });
+                
+                gameState.selectedLineId = newLineId;
+                updateLineSelector();
+                showNotification(`已创建新线路 ${newLineId}`, 'info');
+            }
+            
+            // 清除之前的编辑状态
+            gameState.editingLine = {
+                id: gameState.selectedLineId,
+                stations: [...gameState.lines[gameState.selectedLineId].stations]
+            };
+            
+            // 显示编辑状态提示
+            elements.editingStatus.classList.remove('hidden');
+            elements.editLineBtn.disabled = true;
+            elements.editLineBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            elements.completeLineBtn.disabled = false;
+            elements.completeLineBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            elements.tipText.textContent = '编辑模式：左键点击站点添加到线路，右键点击停止编辑';
+            
+            addEvent(`开始编辑线路 ${gameState.selectedLineId}，左键点击站点添加，右键停止`);
+            renderLines();
+            
+            // 高亮显示当前编辑的线路
+            highlightEditingLine();
+        }
+
+        // 高亮显示正在编辑的线路
+        function highlightEditingLine() {
+            // 移除之前的高亮
+            document.querySelectorAll('.station-highlight').forEach(el => {
+                el.classList.remove('station-highlight');
+            });
+            
+            // 移除线路高亮
+            document.querySelectorAll('.route-highlight').forEach(el => {
+                el.classList.remove('route-highlight');
+            });
+            
+            if (gameState.editingLine.id !== null) {
+                // 高亮已添加到线路的站点
+                gameState.editingLine.stations.forEach(stationId => {
+                    const stationEl = document.getElementById(`station-${stationId}`);
+                    if (stationEl) {
+                        stationEl.classList.add('station-highlight');
+                        stationEl.querySelector('div:first-child').classList.add('editing-mode');
+                    }
+                });
+                
+                // 高亮当前编辑的线路
+                const routeElements = elements.routesContainer.children;
+                if (routeElements.length > gameState.editingLine.id) {
+                    const pathElement = routeElements[gameState.editingLine.id].querySelector('path');
+                    if (pathElement) {
+                        pathElement.classList.add('route-highlight');
+                    }
+                }
+            }
+        }
+
+        // 查找指定位置的站点
+        function findStationAt(x, y) {
+            const mapXOffset = mapX;
+            const mapYOffset = mapY;
+            
+            return gameState.stations.find(station => {
+                const stationX = station.x + mapXOffset;
+                const stationY = station.y + mapYOffset;
+                const distance = Math.hypot(x - stationX, y - stationY);
+                return distance <= GAME_CONFIG.STATION_SIZE;
+            });
+        }
+
+        // 添加站点到线路 - 修复不能连接两个ID相同的站点
+        function addStationToLine(stationId) {
+            // 检查站点是否已在线路中（解决不能连接两个ID相同的站点问题）
+            const lastIndex = gameState.editingLine.stations.length - 1;
+            if (lastIndex >= 0 && gameState.editingLine.stations[lastIndex] === stationId) {
+                showNotification('不能连续添加同一个站点', 'warning');
+                return;
+            }
+            
+            // 添加站点到编辑中的线路
+            gameState.editingLine.stations.push(stationId);
+            
+            // 更新站点的关联线路
+            const station = gameState.stations.find(s => s.id === stationId);
+            if (station && !station.connectedLines.includes(gameState.editingLine.id)) {
+                station.connectedLines.push(gameState.editingLine.id);
+            }
+            
+            renderLines();
+            highlightEditingLine();
+            addEvent(`已将站点 ${station.name} 添加到线路 ${gameState.editingLine.id}`);
+        }
+
+        // 完成线路编辑
+        function completeLine() {
+            if (!gameState.editingLine || gameState.editingLine.stations.length < 2) {
+                showNotification('线路至少需要2个站点才能完成', 'warning');
+                return;
+            }
+            
+            // 更新线路
+            gameState.lines[gameState.editingLine.id].stations = gameState.editingLine.stations;
+            
+            // 重置编辑状态
+            gameState.editingLine = { id: null, stations: [] };
+            
+            // 隐藏编辑状态提示
+            elements.editingStatus.classList.add('hidden');
+            elements.editLineBtn.disabled = false;
+            elements.editLineBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            elements.completeLineBtn.disabled = true;
+            elements.completeLineBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            elements.tipText.textContent = '选择一条线路，点击"编辑线路"按钮，然后左键点击站点添加到线路，右键停止编辑';
+            
+            renderLines();
+            updateLineSelector();
+            highlightEditingLine(); // 清除高亮
+            addEvent(`线路 ${gameState.selectedLineId} 已完成编辑`);
+            showNotification(`线路 ${gameState.selectedLineId} 编辑完成！`, 'success');
+        }
+
+        // 更改选中的线路
+        function changeSelectedLine() {
+            // 如果正在编辑线路，先提示完成当前编辑
+            if (gameState.editingLine.id !== null) {
+                if (!confirm('正在编辑线路，是否放弃当前编辑？')) {
+                    // 恢复选择
+                    elements.lineSelect.value = gameState.selectedLineId.toString();
+                    return;
+                }
+                
+                // 重置编辑状态
+                gameState.editingLine = { id: null, stations: [] };
+                elements.editingStatus.classList.add('hidden');
+                elements.editLineBtn.disabled = false;
+                elements.editLineBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                elements.completeLineBtn.disabled = true;
+                elements.completeLineBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                highlightEditingLine(); // 清除高亮
+            }
+            
+            gameState.selectedLineId = parseInt(elements.lineSelect.value);
+            
+            if (gameState.selectedLineId !== -1 && gameState.lines[gameState.selectedLineId]) {
+                elements.lineFare.value = gameState.lines[gameState.selectedLineId].fare;
+            }
+            
+            renderLines();
+            updateSelectedInfo();
+        }
+
+        // 更新线路票价
+        function updateLineFare() {
+            if (gameState.selectedLineId !== -1 && gameState.lines[gameState.selectedLineId]) {
+                const newFare = parseInt(elements.lineFare.value) || 1;
+                gameState.lines[gameState.selectedLineId].fare = newFare;
+                addEvent(`线路 ${gameState.selectedLineId} 票价调整为 ¥${newFare}`);
+            }
+        }
+
+        // 删除选中的线路
+        function deleteSelectedLine() {
+            if (gameState.selectedLineId === -1 || !gameState.lines[gameState.selectedLineId]) return;
+            
+            if (confirm(`确定要删除线路 ${gameState.selectedLineId} 吗？该线路上的所有公交车也将被删除。`)) {
+                const lineId = gameState.selectedLineId;
+                
+                // 从站点中移除线路关联
+                gameState.stations.forEach(station => {
+                    station.connectedLines = station.connectedLines.filter(id => id !== lineId);
+                });
+                
+                // 移除线路上的公交车
+                gameState.buses = gameState.buses.filter(bus => bus.lineId !== lineId);
+                
+                // 移除线路
+                gameState.lines = gameState.lines.filter(line => line.id !== lineId);
+                
+                // 更新选择
+                gameState.selectedLineId = gameState.lines.length > 0 ? gameState.lines[0].id : -1;
+                gameState.editingLine = { id: null, stations: [] };
+                
+                // 隐藏编辑状态提示
+                elements.editingStatus.classList.add('hidden');
+                elements.editLineBtn.disabled = false;
+                elements.editLineBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                elements.completeLineBtn.disabled = true;
+                elements.completeLineBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                
+                updateLineSelector();
+                renderLines();
+                renderBuses();
+                addEvent(`线路 ${lineId} 已被删除`);
+            }
+        }
+
+        // 购买公交车
+        function buyBus(type) {
+            if (gameState.selectedLineId === -1 || !gameState.lines[gameState.selectedLineId]) {
+                showNotification('请先选择或创建一条线路', 'warning');
+                return;
+            }
+            
+            const cost = GAME_CONFIG.BUS_COST[type];
+            if (gameState.money < cost) {
+                showNotification('资金不足，无法购买公交车', 'danger');
+                return;
+            }
+            
+            // 扣除资金
+            gameState.money -= cost;
+            
+            // 获取线路的第一个站点作为起点
+            const line = gameState.lines[gameState.selectedLineId];
+            if (line.stations.length === 0) {
+                showNotification('线路没有站点，无法添加公交车', 'warning');
+                gameState.money += cost; // 退款
+                updateUI();
+                return;
+            }
+            
+            const startStation = gameState.stations.find(s => s.id === line.stations[0]);
+            
+            // 创建公交车
+            const newBusId = gameState.buses.length;
+            const newBus = {
+                id: newBusId,
+                lineId: gameState.selectedLineId,
+                type: type,
+                x: startStation.x,
+                y: startStation.y,
+                passengers: 0,
+                passengersList: {}, // { destinationId: count }
+                currentStationIndex: 0,
+                moving: false,
+                progress: 0,
+                direction: 1
+            };
+            
+            gameState.buses.push(newBus);
+            createBusElement(newBus);
+            
+            addEvent(`购买了一辆${getBusTypeName(type)}，花费 ¥${cost}`);
+            showNotification(`成功购买${getBusTypeName(type)}`, 'success');
+            updateUI();
+        }
+
+        // 获取公交车类型名称
+        function getBusTypeName(type) {
+            switch(type) {
+                case 'standard': return '普通公交车';
+                case 'express': return '快速公交车';
+                case 'double-decker': return '双层公交车';
+                case 'pretty': return '豪华公交车';
+                case 'elec1': return '有轨电车';
+                default: return '公交车';
+            }
+        }
+
+        // 游戏主循环
+        function gameLoop() {
+            if (!gameState.isRunning) return;
+            
+            const now = Date.now();
+            const deltaTime = GAME_CONFIG.UPDATE_INTERVAL / 1000; // 转换为秒
+            
+            // 更新游戏时间 (每分钟游戏时间 = 1秒现实时间)
+            gameState.gameTime += deltaTime * 60;
+            if (gameState.gameTime >= GAME_CONFIG.DAY_CYCLE) {
+                gameState.gameTime = 0;
+                gameState.day++;
+                newDay();
+            }
+            
+            // 生成乘客
+            if (now - gameState.lastPassengerGeneration > GAME_CONFIG.PASSENGER_GENERATION_RATE) {
+                generatePassengers();
+                gameState.lastPassengerGeneration = now;
+                GAME_CONFIG.PASSENGER_GENERATION_RATE -= 2;
+            }
+            
+            // 每小时计算一次利润
+            if (now - gameState.lastProfitCalculation > 3600000 / 360) { // 游戏中1小时 = 现实中1分钟
+                calculateHourlyProfit();
+                gameState.lastProfitCalculation = now;
+            }
+            
+            // 移动公交车
+            moveBuses(deltaTime);
+            
+            // 更新UI
+            updateTimeDisplay();
+            updatePassengers();
+            
+            // 继续循环
+            setTimeout(gameLoop, GAME_CONFIG.UPDATE_INTERVAL);
+        }
+
+        // 新的一天
+        function newDay() {
+            addEvent(`第 ${gameState.day} 天开始了！`);
+            
+            // 重置每日乘客统计
+            gameState.lines.forEach(line => {
+                line.dailyPassengers = 0;
+            });
+            
+            // 显示每日报告
+            showNotification(`第 ${gameState.day} 天报告: 运营顺利！`, 'info');
+        }
+
+        // 生成乘客
+        function generatePassengers() {
+            // 随机选择起点和终点
+            if (gameState.stations.length < 2) return;
+            
+            const startStation = gameState.stations[Math.floor(Math.random() * gameState.stations.length)];
+            let endStation;
+            
+            // 确保起点和终点不同
+            do {
+                endStation = gameState.stations[Math.floor(Math.random() * gameState.stations.length)];
+            } while (startStation.id === endStation.id);
+            
+            // 增加等待乘客
+            startStation.waitingPassengers[endStation.id] = (startStation.waitingPassengers[endStation.id] || 0) + 1;
+            startStation.passengers++;
+            
+            // 创建乘客视觉元素
+            createPassengerElement(startStation, endStation);
+        }
+
+        // 移动公交车
+        function moveBuses(deltaTime) {
+            gameState.buses.forEach(bus => {
+                const line = gameState.lines[bus.lineId];
+                if (!line || line.stations.length < 2) return;
+
+                const currentStationId = line.stations[bus.currentStationIndex];
+                const currentStation = gameState.stations.find(s => s.id === currentStationId);
+                
+                // 如果公交车不在移动中，在站点停留一段时间后再出发
+                if (!bus.moving) {
+                    if (bus.waitTime === undefined) {
+                        // 刚到达站点，开始上下客
+                        handleBusAtStation(bus, currentStation);
+                        bus.waitTime = 3; // 停留3秒
+                    } else {
+                        bus.waitTime -= deltaTime;
+                        if (bus.waitTime <= 0) {
+                            // 准备出发
+                            bus.moving = true;
+                            bus.progress = 0;
+                            delete bus.waitTime;
+                        }
+                    }
+                    return;
+                }
+                
+                const lineLength = line.stations.length;
+                let nextStationIndex = bus.currentStationIndex + bus.direction;
+
+                // 到达终点（最后一站）：切换为反向
+                if (nextStationIndex >= lineLength) {
+                    nextStationIndex = lineLength - 2; // 退到倒数第二站
+                    bus.direction = -1; // 改为反向
+                }
+                // 到达起点（第一站）：切换为正向
+                if (nextStationIndex < 0) {
+                    nextStationIndex = 1; // 进到第二站
+                    bus.direction = 1; // 改为正向
+                }
+                const nextStationId = line.stations[nextStationIndex];
+                const nextStation = gameState.stations.find(s => s.id === nextStationId);
+                
+                // 计算距离和移动进度
+                const distance = Math.hypot(nextStation.x - currentStation.x, nextStation.y - currentStation.y);
+                const speed = GAME_CONFIG.BUS_SPEED[bus.type];
+                const progressIncrement = (speed * deltaTime) / distance;
+                
+                bus.progress += progressIncrement;
+                
+                // 更新位置
+                bus.x = currentStation.x + (nextStation.x - currentStation.x) * bus.progress;
+                bus.y = currentStation.y + (nextStation.y - currentStation.y) * bus.progress;
+                
+                // 更新公交车元素位置
+                updateBusPosition(bus);
+                
+                // 到达下一个站点
+                if (bus.progress >= 1) {
+                    bus.x = nextStation.x;
+                    bus.y = nextStation.y;
+                    bus.currentStationIndex = nextStationIndex; // 更新为计算后的索引
+                    bus.moving = false;
+                    bus.progress = 0;
+                    updateBusPosition(bus);
+                }
+            });
+        }
+
+        // 处理公交车在站点的上下客
+        function handleBusAtStation(bus, station) {
+            const line = gameState.lines[bus.lineId];
+            const capacity = GAME_CONFIG.BUS_CAPACITY[bus.type];
+            
+            // 乘客下车
+            let passengersAlighted = 0;
+            Object.keys(bus.passengersList).forEach(destId => {
+                if (parseInt(destId) === station.id) {
+                    passengersAlighted = bus.passengersList[destId];
+                    bus.passengers -= passengersAlighted;
+                    delete bus.passengersList[destId];
+                    
+                    // 增加线路的每日乘客统计
+                    line.dailyPassengers += passengersAlighted;
+                    
+                    // 计算收入
+                    const fare = line.fare;
+                    const revenue = passengersAlighted * fare;
+                    gameState.money += revenue;
+                    updateUI();
+                    
+                    if (passengersAlighted > 0) {
+                        showNotification(`${passengersAlighted}名乘客下车，收入 ¥${revenue}`, 'success', station.x, station.y);
+                    }
+                }
+            });
+            GAME_CONFIG.DOWN_PASSENGERS ++;
+            if(GAME_CONFIG.DOWN_PASSENGERS > 5 * GAME_CONFIG.INITIAL_STATIONS){
+                GAME_CONFIG.INITIAL_STATIONS ++;
+                createInitialStations();
+            }
+            
+            // 乘客上车
+            const availableSpace = capacity - bus.passengers;
+            if (availableSpace > 0) {
+                let passengersBoarded = 0;
+                
+                // 按目的地处理等待的乘客
+                Object.keys(station.waitingPassengers).forEach(destId => {
+                    if (availableSpace - passengersBoarded <= 0) return;
+                    
+                    // 检查目的地是否在线路上
+                    if (line.stations.includes(parseInt(destId))) {
+                        const take = Math.min(
+                            station.waitingPassengers[destId],
+                            availableSpace - passengersBoarded
+                        );
+                        
+                        if (take > 0) {
+                            bus.passengersList[destId] = (bus.passengersList[destId] || 0) + take;
+                            bus.passengers += take;
+                            station.waitingPassengers[destId] -= take;
+                            station.passengers -= take;
+                            
+                            passengersBoarded += take;
+                            
+                            if (station.waitingPassengers[destId] === 0) {
+                                delete station.waitingPassengers[destId];
+                            }
+                        }
+                    }
+                });
+                
+                if (passengersBoarded > 0) {
+                    showNotification(`${passengersBoarded}名乘客上车`, 'info', station.x, station.y);
+                }
+            } else {
+                showNotification('公交车已满员', 'warning', station.x, station.y);
+            }
+            
+            // 更新公交车拥挤度显示
+            updateBusCrowdedness(bus);
+        }
+
+        // 计算每小时利润
+        function calculateHourlyProfit() {
+            // 计算收入 (基于过去一小时的乘客量)
+            let totalRevenue = 0;
+            gameState.lines.forEach(line => {
+                totalRevenue += line.dailyPassengers * line.fare / (gameState.gameTime / 60 || 1);
+            });
+            
+            // 计算成本
+            let totalCost = 0;
+            gameState.buses.forEach(bus => {
+                totalCost += GAME_CONFIG.BUS_HOURLY_COST[bus.type];
+            });
+            
+            // 计算利润
+            const hourlyProfit = Math.round(totalRevenue - totalCost);
+            
+            // 更新资金
+            gameState.money += hourlyProfit;
+            updateUI();
+            
+            // 记录利润历史
+            gameState.profitHistory.push(hourlyProfit);
+            if (gameState.profitHistory.length > 12) {
+                gameState.profitHistory.shift();
+            }
+            
+            // 更新图表
+            updateProfitChart();
+            
+            // 更新UI
+            elements.hourlyProfit.textContent = `¥${hourlyProfit >= 0 ? '+' : ''}${hourlyProfit}`;
+            elements.hourlyProfit.className = `text-xl font-bold ${hourlyProfit >= 0 ? 'text-success' : 'danger'}`;
+            
+            // 显示通知
+            const hour = Math.floor(gameState.gameTime / 60);
+            showNotification(`${hour}:00 利润报告: ¥${hourlyProfit}`, hourlyProfit >= 0 ? 'success' : 'danger');
+        }
+
+        // 更新利润图表
+        function updateProfitChart() {
+            profitChart.data.labels = gameState.profitHistory.map((_, i) => `${i + 1}h`);
+            profitChart.data.datasets[0].data = gameState.profitHistory;
+            profitChart.update();
+        }
+
+        // 创建站点元素
+        function createStationElement(station) {
+            const stationElement = document.createElement('div');
+            stationElement.id = `station-${station.id}`;
+            stationElement.className = `absolute cursor-pointer transition-all duration-300 group`;
+            stationElement.style.left = `${station.x}px`;
+            stationElement.style.top = `${station.y}px`;
+            stationElement.innerHTML = `
+                <div class="w-4 h-4 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold z-10 relative">
+                    ${station.id}
+                </div>
+                ${station.isTransfer ? '<div class="absolute -inset-1 rounded-full bg-secondary/30 station-pulse"></div>' : ''}
+                <div class="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded text-xs font-medium shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    ${station.name}
+                </div>
+                <div class="absolute -bottom-6 left-1/2 transform -translate-x-1/2 bg-dark/80 text-white px-2 py-1 rounded text-xs opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    等待: ${station.passengers}人
+                </div>
+            `;
+            
+            // 添加点击事件
+            stationElement.addEventListener('click', (e) => {
+                e.stopPropagation();
+                gameState.selectedEntity = { type: 'station', id: station.id };
+                updateSelectedInfo();
+                
+                // 如果正在编辑线路，添加此站点
+                if (gameState.editingLine.id !== null) {
+                    addStationToLine(station.id);
+                }
+            });
+            
+            elements.stationsContainer.appendChild(stationElement);
+        }
+
+        // 创建公交车元素
+        function createBusElement(bus) {
+            const busElement = document.createElement('div');
+            busElement.id = `bus-${bus.id}`;
+            busElement.className = `absolute cursor-pointer transition-all duration-100 z-20`;
+            busElement.style.left = `${bus.x}px`;
+            busElement.style.top = `${bus.y}px`;
+            
+            // 根据公交车类型设置不同的样式
+            let busIcon, busColor;
+            switch(bus.type) {
+                case 'standard':
+                    busIcon = 'fa-bus';
+                    busColor = 'bg-primary';
+                    break;
+                case 'express':
+                    busIcon = 'fa-bolt';
+                    busColor = 'bg-accent';
+                    break;
+                case 'double-decker':
+                    busIcon = 'fa-building-o';
+                    busColor = 'bg-secondary';
+                    break;
+                case 'pretty': 
+                    busIcon = 'fa-taxi';
+                    busColor = 'bg-highlight2';
+                case 'elec1':
+                    busIcon = 'fa-truck';
+                    busColor = 'bg-highlight1';
+            }
+            
+            // 添加前后箭头
+            busElement.innerHTML = `
+                <div class="${busColor} text-white rounded-full w-8 h-8 flex items-center justify-center shadow-md relative group">
+                    <i class="fa ${busIcon}"></i>
+                    <!-- 前箭头 -->
+                    <span class="absolute top-1/2 right-0 transform translate-x-1/2 -translate-y-1/2 text-white">
+                        <i class="fa fa-caret-right"></i>
+                    </span>
+                    <!-- 后箭头 -->
+                    <span class="absolute top-1/2 left-0 transform -translate-x-1/2 -translate-y-1/2 text-white">
+                        <i class="fa fa-caret-left"></i>
+                    </span>
+                </div>
+                <div class="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-white px-2 py-1 rounded text-xs font-medium shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
+                    ${getBusTypeName(bus.type)} #${bus.id}
+                </div>
+                <div class="absolute bottom-0 left-0 right-0 h-1 bg-gray-200 rounded-b overflow-hidden">
+                    <div class="h-full bg-success transition-all" style="width: ${(bus.passengers / GAME_CONFIG.BUS_CAPACITY[bus.type]) * 100}%"></div>
+                </div>
+            `;
+            
+            // 添加点击事件
+            busElement.addEventListener('click', (e) => {
+                e.stopPropagation();
+                gameState.selectedEntity = { type: 'bus', id: bus.id };
+                updateSelectedInfo();
+            });
+            
+            elements.busesContainer.appendChild(busElement);
+        }
+
+        // 更新公交车位置
+        function updateBusPosition(bus) {
+            const busElement = document.getElementById(`bus-${bus.id}`);
+            if (busElement) {
+                busElement.style.left = `${bus.x}px`;
+                busElement.style.top = `${bus.y}px`;
+                
+                // 根据移动方向旋转公交车及箭头
+                if (bus.moving) {
+                    const line = gameState.lines[bus.lineId];
+                    const currentStationId = line.stations[bus.currentStationIndex];
+                    const currentStation = gameState.stations.find(s => s.id === currentStationId);
+                    const nextStationIndex = (bus.currentStationIndex + 1) % line.stations.length;
+                    const nextStationId = line.stations[nextStationIndex];
+                    const nextStation = gameState.stations.find(s => s.id === nextStationId);
+                    
+                    if (currentStation && nextStation) {
+                        const angle = Math.atan2(
+                            nextStation.y - currentStation.y,
+                            nextStation.x - currentStation.x
+                        ) * 180 / Math.PI;
+                    }
+                }
+            }
+        }
+
+        // 更新公交车拥挤度显示
+        function updateBusCrowdedness(bus) {
+            const busElement = document.getElementById(`bus-${bus.id}`);
+            if (busElement) {
+                const capacity = GAME_CONFIG.BUS_CAPACITY[bus.type];
+                const percentage = (bus.passengers / capacity) * 100;
+                const progressBar = busElement.querySelector('.h-full');
+                
+                progressBar.style.width = `${percentage}%`;
+                
+                // 根据拥挤度改变颜色
+                if (percentage > 80) {
+                    progressBar.className = 'h-full bg-danger transition-all';
+                } else if (percentage > 50) {
+                    progressBar.className = 'h-full bg-warning transition-all';
+                } else {
+                    progressBar.className = 'h-full bg-success transition-all';
+                }
+            }
+        }
+
+        // 创建乘客元素
+        function createPassengerElement(startStation, endStation) {
+            const passengerId = `passenger-${Date.now()}`;
+            const passengerElement = document.createElement('div');
+            passengerElement.id = passengerId;
+            passengerElement.className = 'absolute text-gray-600 z-10 transition-all duration-500';
+            passengerElement.style.left = `${startStation.x + Math.random() * 10 - 5}px`;
+            passengerElement.style.top = `${startStation.y + Math.random() * 10 - 5}px`;
+            passengerElement.innerHTML = '<i class="fa fa-user text-sm"></i>';
+            
+            elements.passengersContainer.appendChild(passengerElement);
+            
+            // 3秒后隐藏乘客图标
+            setTimeout(() => {
+                const el = document.getElementById(passengerId);
+                if (el) {
+                    el.style.opacity = '0';
+                    setTimeout(() => el.remove(), 500);
+                }
+            }, 3000);
+        }
+
+        // 更新乘客显示
+        function updatePassengers() {
+            gameState.stations.forEach(station => {
+                const stationElement = document.getElementById(`station-${station.id}`);
+                if (stationElement) {
+                    // 更新等待人数显示
+                    const waitingElement = stationElement.querySelector('.absolute.-bottom-6');
+                    if (waitingElement) {
+                        waitingElement.textContent = `等待: ${station.passengers}人`;
+                    }
+                    
+                    // 根据等待人数改变站点大小和颜色
+                    const stationCircle = stationElement.querySelector('.w-4');
+                    if (stationCircle) {
+                        if (station.passengers > 10) {
+                            stationCircle.className = 'w-6 h-6 rounded-full bg-danger flex items-center justify-center text-white text-xs font-bold z-10 relative';
+                        } else if (station.passengers > 5) {
+                            stationCircle.className = 'w-5 h-5 rounded-full bg-warning flex items-center justify-center text-white text-xs font-bold z-10 relative';
+                        } else {
+                            stationCircle.className = 'w-4 h-4 rounded-full bg-primary flex items-center justify-center text-white text-xs font-bold z-10 relative';
+                        }
+                    }
+                }
+            });
+        }
+
+        // 渲染线路 - 修复线路无连接线问题
+        function renderLines() {
+            // 清空现有线路
+            elements.routesContainer.innerHTML = '';
+            
+            // 绘制所有线路
+            gameState.lines.forEach(line => {
+                // 确保线路有足够的站点来绘制连接线
+                if (line.stations.length < 2) return;
+                
+                // 创建线路路径容器
+                const lineContainer = document.createElement('div');
+                lineContainer.className = 'absolute pointer-events-none z-0 inset-0';
+                
+                // 创建SVG元素
+                const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+                svg.setAttribute('width', '100%');
+                svg.setAttribute('height', '100%');
+                
+                // 创建路径元素
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                
+                // 构建SVG路径点
+                let pathData = '';
+                line.stations.forEach((stationId, index) => {
+                    const station = gameState.stations.find(s => s.id === stationId);
+                    if (station) {
+                        // 第一个点用M指令，后续点用L指令
+                        pathData += `${index === 0 ? 'M' : 'L'} ${station.x + 10},${station.y + 10} `;
+                    }
+                });
+                
+                // 如果是环线，闭合路径
+                if (line.stations.length > 2 && line.stations[0] === line.stations[line.stations.length - 1]) {
+                    pathData += 'Z'; // 闭合路径
+                }
+                
+                // 设置路径属性
+                path.setAttribute('d', pathData);
+                path.setAttribute('stroke', line.color || getRandomColor());
+                path.setAttribute('stroke-width', '3');
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke-linecap', 'round');
+                path.setAttribute('stroke-linejoin', 'round');
+                path.setAttribute('opacity', '0.8');
+                
+                // 组装SVG
+                svg.appendChild(path);
+                lineContainer.appendChild(svg);
+                elements.routesContainer.appendChild(lineContainer);
+            });
+        }
+
+        // 渲染公交车
+        function renderBuses() {
+            elements.busesContainer.innerHTML = '';
+            gameState.buses.forEach(bus => {
+                createBusElement(bus);
+            });
+        }
+
+        // 更新线路选择器
+        function updateLineSelector() {
+            elements.lineSelect.innerHTML = '<option value="-1">新建线路</option>';
+            
+            gameState.lines.forEach(line => {
+                const busCount = gameState.buses.filter(bus => bus.lineId === line.id).length;
+                const lineCost = gameState.buses
+                    .filter(bus => bus.lineId === line.id)
+                    .reduce((sum, bus) => sum + GAME_CONFIG.BUS_HOURLY_COST[bus.type], 0);
+                
+                const option = document.createElement('option');
+                option.value = line.id;
+                option.textContent = `线路 ${line.id} (${busCount}辆公交车, 成本: ¥${lineCost}/h)`;
+                elements.lineSelect.appendChild(option);
+            });
+            
+            elements.lineSelect.value = gameState.selectedLineId.toString();
+        }
+
+        // 更新选中实体的信息
+        function updateSelectedInfo() {
+            if (!gameState.selectedEntity) {
+                elements.selectedInfo.innerHTML = '<p class="text-gray-500 text-sm text-center py-8">请在地图上选择站点、线路或公交车查看详情</p>';
+                return;
+            }
+            
+            if (gameState.selectedEntity.type === 'station') {
+                const station = gameState.stations.find(s => s.id === gameState.selectedEntity.id);
+                if (station) {
+                    let connectedLines = '';
+                    station.connectedLines.forEach(lineId => {
+                        const line = gameState.lines.find(l => l.id === lineId);
+                        if (line) {
+                            connectedLines += `<span class="inline-block w-3 h-3 rounded-full mr-1" style="background-color: ${line.color}"></span>线路 ${lineId} `;
+                        }
+                    });
+                    
+                    let waitingPassengers = '<div class="text-sm">无等待乘客</div>';
+                    if (Object.keys(station.waitingPassengers).length > 0) {
+                        waitingPassengers = '<ul class="text-sm space-y-1">';
+                        Object.keys(station.waitingPassengers).forEach(destId => {
+                            const destStation = gameState.stations.find(s => s.id === parseInt(destId));
+                            waitingPassengers += `<li>前往 ${destStation ? destStation.name : destId}: ${station.waitingPassengers[destId]}人</li>`;
+                        });
+                        waitingPassengers += '</ul>';
+                    }
+                    
+                    elements.selectedInfo.innerHTML = `
+                        <h3 class="font-bold text-primary">${station.name}</h3>
+                        <p class="text-xs text-gray-500 mt-1">ID: ${station.id}</p>
+                        
+                        <div class="mt-3">
+                            <p class="text-xs text-gray-500">关联线路</p>
+                            <p class="mt-1">${connectedLines || '无'}</p>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <p class="text-xs text-gray-500">等待乘客</p>
+                            ${waitingPassengers}
+                        </div>
+                        
+                        ${station.isTransfer ? '<div class="mt-3 inline-block bg-secondary/20 text-secondary text-xs px-2 py-1 rounded">换乘站</div>' : ''}
+                    `;
+                }
+            } else if (gameState.selectedEntity.type === 'bus') {
+                const bus = gameState.buses.find(b => b.id === gameState.selectedEntity.id);
+                if (bus) {
+                    const line = gameState.lines[bus.lineId];
+                    const capacity = GAME_CONFIG.BUS_CAPACITY[bus.type];
+                    
+                    let passengersOnBoard = '<div class="text-sm">无乘客</div>';
+                    if (Object.keys(bus.passengersList).length > 0) {
+                        passengersOnBoard = '<ul class="text-sm space-y-1">';
+                        Object.keys(bus.passengersList).forEach(destId => {
+                            const destStation = gameState.stations.find(s => s.id === parseInt(destId));
+                            passengersOnBoard += `<li>前往 ${destStation ? destStation.name : destId}: ${bus.passengersList[destId]}人</li>`;
+                        });
+                        passengersOnBoard += '</ul>';
+                    }
+                    
+                    elements.selectedInfo.innerHTML = `
+                        <h3 class="font-bold text-primary">${getBusTypeName(bus.type)} #${bus.id}</h3>
+                        <p class="text-xs text-gray-500 mt-1">线路: ${line ? line.id : '未知'}</p>
+                        
+                        <div class="mt-3">
+                            <p class="text-xs text-gray-500">载客情况</p>
+                            <div class="mt-1 bg-gray-100 rounded-full h-2">
+                                <div class="h-full rounded-full" style="width: ${(bus.passengers / capacity) * 100}%; background-color: ${bus.passengers / capacity > 0.8 ? '#FF4D4F' : bus.passengers / capacity > 0.5 ? '#FAAD14' : '#52C41A'}"></div>
+                            </div>
+                            <p class="text-right text-xs mt-1">${bus.passengers}/${capacity} 人</p>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <p class="text-xs text-gray-500">车上乘客</p>
+                            ${passengersOnBoard}
+                        </div>
+                    `;
+                }
+            }
+        }
+
+        // 更新时间显示
+        function updateTimeDisplay() {
+            const hour = Math.floor(gameState.gameTime / 60);
+            const minute = Math.floor(gameState.gameTime % 60);
+            elements.timeDisplay.textContent = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+        }
+
+        // 显示通知
+        function showNotification(message, type = 'info', x = null, y = null) {
+            const notificationId = `notification-${Date.now()}`;
+            const notification = document.createElement('div');
+            
+            let icon, bgColor;
+            switch(type) {
+                case 'success':
+                    icon = 'fa-check-circle';
+                    bgColor = 'bg-success/90';
+                    break;
+                case 'warning':
+                    icon = 'fa-exclamation-triangle';
+                    bgColor = 'bg-warning/90';
+                    break;
+                case 'danger':
+                    icon = 'fa-times-circle';
+                    bgColor = 'bg-danger/90';
+                    break;
+                default:
+                    icon = 'fa-info-circle';
+                    bgColor = 'bg-primary/90';
+            }
+            
+            notification.id = notificationId;
+            notification.className = `absolute text-white px-3 py-2 rounded shadow-lg transform transition-all duration-300 opacity-0 z-30`;
+            notification.style.left = x !== null ? `${x}px` : '50%';
+            notification.style.top = y !== null ? `${y}px` : '20px';
+            notification.style.transform = x !== null ? 'translate(-50%, -10px)' : 'translateX(-50%) translateY(-10px)';
+            notification.innerHTML = `<i class="fa ${icon} mr-2"><i class="fa ${icon} mr-2"></i>${message}`;
+            notification.classList.add(...bgColor.split(' '));
+            
+            elements.notificationsContainer.appendChild(notification);
+            
+            // 显示动画
+            setTimeout(() => {
+                const el = document.getElementById(notificationId);
+                if (el) {
+                    el.style.opacity = '1';
+                    el.style.transform = x !== null ? 'translate(-50%, 0)' : 'translateX(-50%) translateY(0)';
+                }
+            }, 10);
+            
+            // 3秒后隐藏
+            setTimeout(() => {
+                const el = document.getElementById(notificationId);
+                if (el) {
+                    el.style.opacity = '0';
+                    el.style.transform = x !== null ? 'translate(-50%, -10px)' : 'translateX(-50%) translateY(-10px)';
+                    setTimeout(() => el.remove(), 300);
+                }
+            }, 3000);
+        }
+
+        // 添加事件到日志
+        function addEvent(message) {
+            const eventTime = elements.timeDisplay.textContent;
+            const eventElement = document.createElement('div');
+            eventElement.className = 'text-gray-700 border-l-2 border-primary pl-2 py-1';
+            eventElement.innerHTML = `<span class="text-xs text-gray-500">${eventTime}</span> ${message}`;
+            
+            elements.eventLog.prepend(eventElement);
+            
+            // 限制日志数量
+            if (elements.eventLog.children.length > 10) {
+                elements.eventLog.removeChild(elements.eventLog.lastChild);
+            }
+        }
+
+        // 更新UI
+        function updateUI() {
+            elements.moneyDisplay.textContent = `¥${gameState.money}`;
+            elements.lineCount.textContent = gameState.lines.length;
+            elements.busCount.textContent = gameState.buses.length;
+            
+            // 计算总每日乘客
+            let totalDailyPassengers = 0;
+            gameState.lines.forEach(line => {
+                totalDailyPassengers += line.dailyPassengers;
+            });
+            elements.dailyPassengers.textContent = totalDailyPassengers;
+            
+            updateLineSelector();
+            renderLines();
+        }
+
+        // 保存游戏
+        function saveGame() {
+            try {
+                const saveData = {
+                    money: gameState.money,
+                    gameTime: gameState.gameTime,
+                    day: gameState.day,
+                    stations: gameState.stations,
+                    lines: gameState.lines,
+                    buses: gameState.buses,
+                    profitHistory: gameState.profitHistory
+                };
+                
+                localStorage.setItem('busCompanySave', JSON.stringify(saveData));
+                showNotification('游戏已保存', 'success');
+            } catch (e) {
+                showNotification('保存失败', 'danger');
+                console.error('保存失败:', e);
+            }
+        }
+
+        // 重置游戏
+        function resetGame() {
+            if (confirm('确定要重置游戏吗')){
+                // 重置游戏状态
+                gameState = {
+                    money: GAME_CONFIG.BASE_MONEY,
+                    gameTime: 0,
+                    day: 1,
+                    stations: [],
+                    lines: [],
+                    buses: [],
+                    passengers: [],
+                    events: [],
+                    profitHistory: [],
+                    selectedLineId: -1,
+                    editingLine: {
+                        id: null,
+                        stations: []
+                    },
+                    selectedEntity: null,
+                    lastPassengerGeneration: 0,
+                    lastProfitCalculation: 0,
+                    isRunning: true
+                };
+                // 清空 DOM 元素
+                elements.stationsContainer.innerHTML = '';
+                elements.routesContainer.innerHTML = '';
+                elements.busesContainer.innerHTML = '';
+                elements.passengersContainer.innerHTML = '';
+                elements.notificationsContainer.innerHTML = '';
+                elements.eventLog.innerHTML = '';
+                // 重新初始化
+                createInitialStations();
+                initChart();
+                updateUI();
+                renderLines();
+                renderBuses();
+                updateSelectedInfo();
+                addEvent('游戏已重置');
+                showNotification('游戏已重置', 'info');
+            }
+        }
+
+        // 获取随机颜色
+        function getRandomColor() {
+            const colors = [
+                '#165DFF', '#36CFC9', '#722ED1', '#FF7D00', '#F5222D',
+                '#FAAD14', '#52C41A', '#EB2F96', '#1890FF', '#00B42A'
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        // 初始化游戏
+        window.addEventListener('DOMContentLoaded', initGame);
+    </script>
+</body>
+</html>
